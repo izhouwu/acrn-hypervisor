@@ -209,13 +209,13 @@ static const struct e820_entry pre_ve820_template[E820_MAX_ENTRIES] = {
 		.type     = E820_TYPE_RESERVED
 	},
 	{	/* ACPI Reclaim */
-		.baseaddr = VIRT_ACPI_DATA_ADDR,/* consecutive from 0x7fe00000UL */
-		.length   = (960U * MEM_1K),	/* 960KB */
+		.baseaddr = VIRT_ACPI_DATA_ADDR, /* consecutive after the last area */
+		.length   = VIRT_ACPI_DATA_LEN,
 		.type	  = E820_TYPE_ACPI_RECLAIM
 	},
 	{	/* ACPI NVS */
 		.baseaddr = VIRT_ACPI_NVS_ADDR,	/* consecutive after ACPI Reclaim */
-		.length   = MEM_1M, 		/* only the first 64KB is used for NVS */
+		.length   = VIRT_ACPI_NVS_LEN,
 		.type	  = E820_TYPE_ACPI_NVS
 	},
 	{	/* 32bit PCI hole */
@@ -242,22 +242,23 @@ static inline uint64_t add_ram_entry(struct e820_entry *entry, uint64_t gpa, uin
  * ve820 layout for pre-launched VM:
  *
  *   entry0: usable under 1MB
- *   entry1: reserved for MP Table/ACPI RSDP from 0xf0000 to 0xfffff
+ *   entry1: reserved for Video/BIOS extentions from 0xa0000 to 0xfffff
  *   entry2: usable, the part1 of hpa1 in lowmem, from 0x100000,
  *           and up to the bottom of Software SRAM area.
  *   entry3: reserved, Software SRAM segment, which will be identically mapped to physical
  *           Software SRAM segment rather than hpa1.
  *   entry4: usable, the part2 of hpa1 in lowmem, from the ceil of Software SRAM segment,
- *           and up to 2G-1M.
- *   entry5: ACPI Reclaim from 0x7ff00000 to 0x7ffeffff
- *   entry6: ACPI NVS from 0x7fff0000 to 0x7fffffff
- *   entry7: reserved for 32bit PCI hole from 0x80000000 to 0xffffffff
- *   (entry8): usable for
+ *           and up to 2G-(size of ACPI and GPU reserved areas).
+ *   entry5: reserved, GPU OpRegion.
+ *   entry6: ACPI Reclaim from 0x7fe00000 to 0x7fefffff
+ *   entry7: ACPI NVS from 0x7fff0000 to 0x7fffffff
+ *   entry8: reserved for 32bit PCI hole from 0x80000000 to 0xffffffff
+ *   (entry9): usable for
  *            a) hpa1_hi, if hpa1 > 2GB - PRE_RTVM_SW_SRAM_MAX_SIZE
  *            b) hpa2, if (hpa1 + hpa2) < 2GB - PRE_RTVM_SW_SRAM_MAX_SIZE
  *            c) hpa2_lo,
  *               if hpa1 < 2GB - PRE_RTVM_SW_SRAM_MAX_SIZE and (hpa1 + hpa2) > 2GB - PRE_RTVM_SW_SRAM_MAX_SIZE
- *   (entry9): usable for
+ *   (entry10): usable for
  *            a) hpa2, if hpa1 > 2GB - PRE_RTVM_SW_SRAM_MAX_SIZE
  *            b) hpa2_hi,
  *               if hpa1 < 2GB - PRE_RTVM_SW_SRAM_MAX_SIZE and (hpa1 + hpa2) > 2GB - PRE_RTVM_SW_SRAM_MAX_SIZE
@@ -270,7 +271,8 @@ static inline uint64_t add_ram_entry(struct e820_entry *entry, uint64_t gpa, uin
 	|<---Software SRAM--->|
 	|<-----hpa1_low_part2--->|
 	|<---Non-mapped hole (if there is)-->|
-	|<---1M ACPI NVS/DATA--->|
+	|<---GPU_OpRegion--->|
+	|<---(1M + 1M) ACPI NVS/DATA--->|
 */
 void create_prelaunched_vm_e820(struct acrn_vm *vm)
 {
@@ -278,6 +280,7 @@ void create_prelaunched_vm_e820(struct acrn_vm *vm)
 	uint64_t gpa_start = 0x100000000UL;
 	uint64_t hpa1_hi_size, hpa2_lo_size;
 	uint64_t lowmem_max_length = MEM_2G - PRE_RTVM_SW_SRAM_MAX_SIZE;
+	/* the 'MEM_1M' symble here and below stands for the size of 0-0x100000 area */
 	uint64_t hpa1_part1_max_length = PRE_RTVM_SW_SRAM_BASE_GPA - MEM_1M;
 	uint64_t remaining_hpa2_size = vm_config->memory.size_hpa2;
 	uint32_t entry_idx = ENTRY_HPA1_HI;
@@ -292,18 +295,19 @@ void create_prelaunched_vm_e820(struct acrn_vm *vm)
 		hpa1_hi_size = vm_config->memory.size - lowmem_max_length;
 		gpa_start = add_ram_entry((vm->e820_entries + entry_idx), gpa_start, hpa1_hi_size);
 		entry_idx++;
-	} else if (vm_config->memory.size <= MEM_1M + hpa1_part1_max_length + MEM_1M) {
+	} else if (vm_config->memory.size - MEM_1M - GPU_OPREGION_SIZE - VIRT_ACPI_DATA_LEN - VIRT_ACPI_NVS_LEN <=
+		hpa1_part1_max_length) {
 		/*
 		 * In this case, hpa1 is only enough for the first
-		 * 1M + part1 + last 1M (ACPI NVS/DATA), so part2 will be empty.
-		 * Below 'MEM_2M' includes the first and last 1M
+		 * 1M + part1 + last (1M + 1M) (ACPI NVS/DATA), so part2 will be empty.
 		 */
-		vm->e820_entries[ENTRY_HPA1_LOW_PART1].length = vm_config->memory.size - MEM_2M;
+		vm->e820_entries[ENTRY_HPA1_LOW_PART1].length =
+			vm_config->memory.size - MEM_1M - GPU_OPREGION_SIZE - VIRT_ACPI_DATA_LEN - VIRT_ACPI_NVS_LEN;
 		vm->e820_entries[ENTRY_HPA1_LOW_PART2].length = 0;
 	} else {
 		/* Otherwise, part2 is not empty. */
 		vm->e820_entries[ENTRY_HPA1_LOW_PART2].length =
-			vm_config->memory.size - PRE_RTVM_SW_SRAM_BASE_GPA - MEM_1M;
+			vm_config->memory.size - PRE_RTVM_SW_SRAM_BASE_GPA - GPU_OPREGION_SIZE - VIRT_ACPI_DATA_LEN - VIRT_ACPI_NVS_LEN;
 		/* need to set gpa_start for hpa2 */
 	}
 
