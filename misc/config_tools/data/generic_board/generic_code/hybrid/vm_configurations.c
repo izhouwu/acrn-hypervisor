@@ -23,8 +23,6 @@ struct acrn_vm_config vm_configs[CONFIG_MAX_VM_NUM] = {
 		.memory = {
 			.start_hpa = VM0_CONFIG_MEM_START_HPA,
 			.size = VM0_CONFIG_MEM_SIZE,
-			.start_hpa2 = VM0_CONFIG_MEM_START_HPA2,
-			.size_hpa2 = VM0_CONFIG_MEM_SIZE_HPA2,
 		},
 		.os_config = {
 			.name = "Zephyr",

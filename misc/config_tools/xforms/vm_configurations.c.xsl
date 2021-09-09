@@ -144,8 +144,6 @@
       <xsl:otherwise>
         <xsl:value-of select="acrn:initializer('start_hpa', concat('VM', ../@id, '_CONFIG_MEM_START_HPA'))" />
         <xsl:value-of select="acrn:initializer('size', concat('VM', ../@id, '_CONFIG_MEM_SIZE'))" />
-        <xsl:value-of select="acrn:initializer('start_hpa2', concat('VM', ../@id, '_CONFIG_MEM_START_HPA2'))" />
-        <xsl:value-of select="acrn:initializer('size_hpa2', concat('VM', ../@id, '_CONFIG_MEM_SIZE_HPA2'))" />
      </xsl:otherwise>
     </xsl:choose>
     <xsl:text>},</xsl:text>

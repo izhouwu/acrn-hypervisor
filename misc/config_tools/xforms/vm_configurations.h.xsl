@@ -71,8 +71,6 @@
       <xsl:if test="acrn:is-pre-launched-vm(vm_type)">
         <xsl:value-of select="acrn:define(concat('VM', @id, '_CONFIG_MEM_START_HPA'), memory/start_hpa, 'UL')" />
         <xsl:value-of select="acrn:define(concat('VM', @id, '_CONFIG_MEM_SIZE'), memory/size, 'UL')" />
-        <xsl:value-of select="acrn:define(concat('VM', @id, '_CONFIG_MEM_START_HPA2'), memory/start_hpa2, 'UL')" />
-        <xsl:value-of select="acrn:define(concat('VM', @id, '_CONFIG_MEM_SIZE_HPA2'), memory/size_hpa2, 'UL')" />
       </xsl:if>
     </xsl:for-each>
   </xsl:template>

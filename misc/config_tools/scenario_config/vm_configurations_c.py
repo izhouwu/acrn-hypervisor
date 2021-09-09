@@ -301,8 +301,6 @@ def gen_pre_launch_vm(vm_type, vm_i, scenario_items, config):
     print("\t\t.memory = {", file=config)
     print("\t\t\t.start_hpa = VM{0}_CONFIG_MEM_START_HPA,".format(vm_i), file=config)
     print("\t\t\t.size = VM{0}_CONFIG_MEM_SIZE,".format(vm_i), file=config)
-    print("\t\t\t.start_hpa2 = VM{0}_CONFIG_MEM_START_HPA2,".format(vm_i), file=config)
-    print("\t\t\t.size_hpa2 = VM{0}_CONFIG_MEM_SIZE_HPA2,".format(vm_i), file=config)
     print("\t\t},", file=config)
     is_need_epc(vm_info.epc_section, vm_i, config)
     print("\t\t.os_config = {", file=config)
