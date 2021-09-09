@@ -126,18 +126,6 @@ VM.</xs:documentation>
 value is ``0x200000000``.</xs:documentation>
       </xs:annotation>
     </xs:element>
-    <xs:element name="start_hpa2" type="HexFormat" default="0x0" minOccurs="0">
-      <xs:annotation acrn:configurable="n">
-        <xs:documentation>Start of second HPA for non-contiguous
-allocations in host for the VM.</xs:documentation>
-      </xs:annotation>
-    </xs:element>
-    <xs:element name="size_hpa2" type="MemorySizeType" default="0x0" minOccurs="0">
-      <xs:annotation acrn:configurable="n">
-        <xs:documentation>Memory size of second HPA for non-contiguous
-allocations in Bytes for the VM.</xs:documentation>
-      </xs:annotation>
-    </xs:element>
   </xs:sequence>
 </xs:complexType>
 

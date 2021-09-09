@@ -93,8 +93,6 @@
     <memory>
         <start_hpa>0x100000000</start_hpa>
         <size>0x40000000</size>
-        <start_hpa2>0x0</start_hpa2>
-        <size_hpa2>0x0</size_hpa2>
     </memory>
     <os_config>
         <name>PREEMPT-RT</name>
