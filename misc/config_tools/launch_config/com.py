@@ -95,7 +95,7 @@ def off_line_cpus(args, vmid, uos_type, config):
     print("    for j in {}; do".format(' '.join([str(i) for i in pcpu_id_list])), file=config)
     print('        if [ "cpu"$j = $i ]; then', file=config)
     print('            online=`cat ${cpu_path}/$i/online`', file=config)
-    print('            idx=`echo $i | tr -cd "[1-99]"`', file=config)
+    print('            idx=`echo $i | tr -cd "[0-9]"`', file=config)
     print('            echo $i online=$online', file=config)
     print('            if [ "$online" = "1" ]; then', file=config)
     print("                echo 0 > ${cpu_path}/$i/online", file=config)
@@ -220,18 +220,23 @@ def interrupt_storm(pt_sel, config):
     print('intr_storm_monitor="--intr_monitor 10000,10,1,100"', file=config)
     print("", file=config)
 
-
 def gvt_arg_set(dm, vmid, uos_type, config):
 
     gvt_args = dm['gvt_args'][vmid]
-    if gvt_args == "gvtd":
-        bus = int(launch_cfg_lib.GPU_BDF.split(':')[0], 16)
-        dev = int(launch_cfg_lib.GPU_BDF.split('.')[0].split(':')[1], 16)
-        fun = int(launch_cfg_lib.GPU_BDF.split('.')[1], 16)
-        print('   -s 2,passthru,{}/{}/{},gpu  \\'.format(bus, dev, fun), file=config)
-    elif gvt_args:
-        print('   -s 2,pci-gvt -G "$2"  \\', file=config)
+    gpu_bdf = launch_cfg_lib.get_gpu_bdf()
 
+    if gpu_bdf is not None:
+        bus = int(gpu_bdf[0:2], 16)
+        dev = int(gpu_bdf[3:5], 16)
+        fun = int(gpu_bdf[6:7], 16)
+        if gvt_args == "gvtd":
+            print('   -s 2,passthru,{}/{}/{},gpu  \\'.format(bus, dev, fun), file=config)
+        elif gvt_args == "sriov" and uos_type in launch_cfg_lib.LINUX_LIKE_OS and uos_type != "PREEMPT-RT LINUX":
+            print('   -s 2,passthru,{}/{}/1,gpu  \\'.format(bus, dev), file=config)
+        elif gvt_args == "sriov" and uos_type == "WINDOWS":
+            print('   -s 2,passthru,{}/{}/2,igd-vf  \\'.format(bus, dev), file=config)
+        elif gvt_args:
+            print('   -s 2,pci-gvt -G "$2"  \\', file=config)
 
 def log_level_set(uos_type, config):
 
@@ -603,14 +608,14 @@ def dm_arg_set(names, sel, virt_io, dm, vmid, config):
     # set logger_setting for all VMs
     print("   $logger_setting \\", file=config)
 
+    # GVT args set
+    gvt_arg_set(dm, vmid, uos_type, config)
+
     # XHCI args set
     xhci_args_set(dm, vmid, config)
 
     # VIRTIO args set
     virtio_args_set(dm, virt_io, vmid, config)
-
-    # GVT args set
-    gvt_arg_set(dm, vmid, uos_type, config)
 
     # vbootloader setting
     vboot_arg_set(dm, vmid, config)
@@ -636,7 +641,7 @@ def dm_arg_set(names, sel, virt_io, dm, vmid, config):
             break
 
     if uos_type != "PREEMPT-RT LINUX":
-        print("   -s 31:0,lpc \\", file=config)
+        print("   -s 1:0,lpc \\", file=config)
 
     # redirect console
     if dm['vuart0'][vmid] == "Enable":

@@ -179,7 +179,7 @@ static inline int ptdev_msix_pba_bar(struct passthru_dev *ptdev)
 static int
 cfginitbar(struct vmctx *ctx, struct passthru_dev *ptdev)
 {
-	int i, error;
+	int i, error = 0;
 	struct pci_vdev *dev;
 	struct pci_bar_io bar;
 	enum pcibar_type bartype;
@@ -243,7 +243,12 @@ cfginitbar(struct vmctx *ctx, struct passthru_dev *ptdev)
 		if (size == 0)
 			continue;
 
-		/* Allocate the BAR in the guest I/O or MMIO space */
+		if (bartype == PCIBAR_IO)
+			error = create_mmio_rsvd_rgn(base, base + size - 1, i, PCIBAR_IO, dev);
+		if (error)
+			return -1;
+
+		/* Allocate the BAR in the guest MMIO space */
 		error = pci_emul_alloc_pbar(dev, i, base, bartype, size);
 		if (error)
 			return -1;
@@ -766,6 +771,7 @@ passthru_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 		vm_unmap_ptdev_mmio(ctx, 0, 2, 0, gpu_opregion_gpa, GPU_OPREGION_SIZE, gpu_opregion_hpa);
 	}
 
+	destory_mmio_rsvd_rgns(dev);
 	pcidev.virt_bdf = PCI_BDF(dev->bus, dev->slot, dev->func);
 	pcidev.phys_bdf = ptdev->phys_bdf;
 	pciaccess_cleanup();
