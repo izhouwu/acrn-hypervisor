@@ -286,7 +286,7 @@ export default {
     },
     vmNameChange(newname, oldname) {
       let hvdata = this.scenario.hv
-      if (hvdata.hasOwnProperty('FEATURES.IVSHMEM.IVSHMEM_REGION')) {
+      if (hvdata.FEATURES.hasOwnProperty('IVSHMEM')) {
         for (let key in hvdata.FEATURES.IVSHMEM.IVSHMEM_REGION) {
           let region = hvdata.FEATURES.IVSHMEM.IVSHMEM_REGION[key]
           for (let key1 in region.IVSHMEM_VMS.IVSHMEM_VM) {
