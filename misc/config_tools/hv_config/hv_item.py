@@ -82,7 +82,7 @@ class Features:
         self.iommu_enforce_snp = ''
         self.acpi_parse_enabled = ''
         self.l1d_flush_vmentry_enabled = ''
-        self.mce_on_psc_workaround_disabled = ''
+        self.mce_on_psc_workaround_enabled = ''
         self.ssram_enabled = ''
 
     def get_info(self):
@@ -96,7 +96,7 @@ class Features:
         self.hyperv_enabled = common.get_hv_item_tag(self.hv_file, "FEATURES", "HYPERV_ENABLED")
         self.acpi_parse_enabled = common.get_hv_item_tag(self.hv_file, "FEATURES", "ACPI_PARSE_ENABLED")
         self.l1d_flush_vmentry_enabled = common.get_hv_item_tag(self.hv_file, "FEATURES", "L1D_VMENTRY_ENABLED")
-        self.mce_on_psc_workaround_disabled = common.get_hv_item_tag(self.hv_file, "FEATURES", "MCE_ON_PSC_DISABLED")
+        self.mce_on_psc_workaround_enabled = common.get_hv_item_tag(self.hv_file, "FEATURES", "MCE_ON_PSC_ENABLED")
         self.iommu_enforce_snp = common.get_hv_item_tag(self.hv_file, "FEATURES", "IOMMU_ENFORCE_SNP")
         self.ssram_enabled = common.get_hv_item_tag(self.hv_file, "FEATURES", "SSRAM", "SSRAM_ENABLED")
 
@@ -111,7 +111,7 @@ class Features:
         hv_cfg_lib.ny_support_check(self.hyperv_enabled, "FEATURES", "HYPERV_ENABLED")
         hv_cfg_lib.ny_support_check(self.acpi_parse_enabled, "FEATURES", "ACPI_PARSE_ENABLED")
         hv_cfg_lib.ny_support_check(self.l1d_flush_vmentry_enabled, "FEATURES", "L1D_VMENTRY_ENABLED")
-        hv_cfg_lib.ny_support_check(self.mce_on_psc_workaround_disabled, "FEATURES", "MCE_ON_PSC_DISABLED")
+        hv_cfg_lib.ny_support_check(self.mce_on_psc_workaround_enabled, "FEATURES", "MCE_ON_PSC_ENABLED")
         hv_cfg_lib.ny_support_check(self.iommu_enforce_snp, "FEATURES", "IOMMU_ENFORCE_SNP")
         # hv_cfg_lib.ny_support_check(self.ssram_enabled, "FEATURES", "SSRAM", "SSRAM_ENABLED")
         hv_cfg_lib.hv_ssram_check(self.ssram_enabled, self.cdp_enabled, "FEATURES", "SSRAM", "SSRAM_ENABLED")

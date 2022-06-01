@@ -58,12 +58,12 @@
         <xs:documentation>Enable multiboot2 protocol support (with multiboot1 downward compatibility). If multiboot1 meets your requirements, disable this feature to reduce hypervisor code size.</xs:documentation>
       </xs:annotation>
     </xs:element>
-    <xs:element name="ENFORCE_TURNOFF_AC" type="Boolean" default="y">
+    <xs:element name="AC_ENABLED" type="Boolean" default="n">
       <xs:annotation acrn:title="Split lock detection" acrn:views="advanced">
         <xs:documentation>Enable detection of split locks. A split lock can negatively affect an application's real-time performance. If a lock is detected, an alignment check exception #AC occurs.</xs:documentation>
       </xs:annotation>
     </xs:element>
-    <xs:element name="ENFORCE_TURNOFF_GP" type="Boolean" default="n">
+    <xs:element name="GP_ENABLED" type="Boolean" default="y">
       <xs:annotation acrn:title="UC lock detection" acrn:views="advanced">
         <xs:documentation>Enable detection of uncacheable-memory (UC) locks. A UC lock can negatively affect an application's real-time performance. If a lock is detected, a general-protection exception #GP occurs.</xs:documentation>
       </xs:annotation>
@@ -98,7 +98,7 @@
         <xs:documentation>Enable L1 cache flush before VM entry to prevent L1 terminal fault. L1 terminal fault is a hardware vulnerability that could allow unauthorized disclosure of information residing in the L1 data cache.</xs:documentation>
       </xs:annotation>
     </xs:element>
-    <xs:element name="MCE_ON_PSC_DISABLED" type="Boolean" default="y">
+    <xs:element name="MCE_ON_PSC_ENABLED" type="Boolean" default="n">
       <xs:annotation acrn:title="MCE workaround" acrn:views="advanced">
         <xs:documentation>Enable the software workaround for Machine Check Error on Page Size Change (erratum in some processor families).</xs:documentation>
       </xs:annotation>

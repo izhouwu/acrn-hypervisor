@@ -133,7 +133,7 @@ with these settings:
             <RELOC>y</RELOC>
             <SCHEDULER>SCHED_NOOP</SCHEDULER>
             <MULTIBOOT2>y</MULTIBOOT2>
-            <ENFORCE_TURNOFF_AC>y</ENFORCE_TURNOFF_AC>
+            <AC_ENABLED>n</AC_ENABLED>
             <RDT>
                 <RDT_ENABLED>n</RDT_ENABLED>
                 <CDP_ENABLED>y</CDP_ENABLED>
