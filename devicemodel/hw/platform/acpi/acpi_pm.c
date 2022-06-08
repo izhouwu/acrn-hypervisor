@@ -321,6 +321,7 @@ static int dsdt_write_pss(struct vmctx *ctx, int vcpu_id)
  */
 static void dsdt_write_cpc(void)
 {
+#if 0	
 	dsdt_line("");
 	dsdt_line("    Method (_CPC, 0, NotSerialized)");
 	dsdt_line("    {");
@@ -351,6 +352,34 @@ static void dsdt_write_cpc(void)
 	dsdt_line("            Zero");
 	dsdt_line("        })");
 	dsdt_line("    }");
+#endif
+	dsdt_line("Method (_CPC, 0, NotSerialized)");
+	dsdt_line("{");
+	dsdt_line("    Return (Package (0x15)");
+	dsdt_line("    {");
+	dsdt_line("        0x15,");
+	dsdt_line("        0x02,");
+	dsdt_line("        0xFF,");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x08,0x00000000000000CE,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x10,0x0000000000000771,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x18,0x0000000000000771,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x08,0x0000000000000771,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x10,0x0000000000000774,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x00,0x0000000000000774,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x08,0x0000000000000774,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(SystemMemory,0x00,0x00,0x0000000000000000,,)},");
+	dsdt_line("        ResourceTemplate(){Register(SystemMemory,0x00,0x00,0x0000000000000000,,)},");
+	dsdt_line("        ResourceTemplate(){Register(SystemMemory,0x00,0x00,0x0000000000000000,,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x40,0x00,0x00000000000000E7,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x40,0x00,0x00000000000000E8,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x02,0x01,0x0000000000000777,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x01,0x00,0x0000000000000770,0x04,)},");
+	dsdt_line("        One,");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x0A,0x20,0x0000000000000774,0x04,)},");
+	dsdt_line("        ResourceTemplate(){Register(FFixedHW,0x08,0x18,0x0000000000000774,0x04,)},");
+	dsdt_line("        Zero");
+	dsdt_line("    })");
+	dsdt_line("}");	
 }
 
 static bool is_hwp_enabled(void)

@@ -779,6 +779,8 @@ dsdt_line(const char *fmt, ...)
 		if (dsdt_indent_level != 0)
 			EFPRINTF(dsdt_fp, "%*c", dsdt_indent_level * 2, ' ');
 		va_start(ap, fmt);
+		printf(fmt, ap);
+		printf("\n");
 		if (vfprintf(dsdt_fp, fmt, ap) < 0)
 			goto err_exit;
 		va_end(ap);
