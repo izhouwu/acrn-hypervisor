@@ -628,35 +628,35 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_PERF_CTL:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("rd perf_ctl");	
 		v = msr_read(msr);
 		break;
 	}
 	case MSR_IA32_PERF_STATUS:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("rd perf_stu");
 		v = msr_read(msr);
 		break;
 	}
 	case MSR_IA32_PM_ENABLE:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("rd pm_en");
 		v = msr_read(msr);
 		break;
 	}
 	case MSR_IA32_HWP_CAPABILITIES:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("rd hwp_cap");
 		v = msr_read(msr);
 		break;
 	}
 	case MSR_IA32_HWP_REQUEST:	
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("rd hwp_req");
 		v = msr_read(msr);
 		break;
@@ -1031,7 +1031,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_PERF_CTL:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("wr perf_ctl %lx", v);	
 
 		if (validate_pstate(vcpu->vm, v) != 0) {
@@ -1042,7 +1042,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_PERF_STATUS:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("wr perf_status %lx", v);	
 
 		msr_write(msr, v);
@@ -1050,21 +1050,21 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}	
 	case MSR_IA32_PM_ENABLE:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("wr pm_en %lx", v);
 		msr_write(msr, v);
 		break;
 	}
 	case MSR_IA32_HWP_CAPABILITIES:
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("wr hwp_cap %lx", v);
 		msr_write(msr, v);
 		break;
 	}
 	case MSR_IA32_HWP_REQUEST:	
 	{
-		if (vcpu->vm->vm_id == 1)
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
 			pr_acrnlog("wr hwp_req %lx", v);
 		msr_write(msr, v);
 		break;
