@@ -696,6 +696,10 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	case MSR_IA32_MISC_ENABLE:
 	{
 		v = vcpu_get_guest_msr(vcpu, MSR_IA32_MISC_ENABLE);
+		
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
+			pr_acrnlog("rd misc_en %lx", v);	
+
 		break;
 	}
 	case MSR_IA32_SGXLEPUBKEYHASH0:
@@ -1104,6 +1108,9 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_MISC_ENABLE:
 	{
+		if (vcpu->vm->vm_id == 1 || vcpu->vm->vm_id == 3)
+			pr_acrnlog("wr misc_en %lx", v);	
+
 		set_guest_ia32_misc_enalbe(vcpu, v);
 		break;
 	}
