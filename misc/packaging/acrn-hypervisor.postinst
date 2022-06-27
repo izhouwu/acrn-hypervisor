@@ -7,9 +7,9 @@ set -e
 
 #Build info Start
 
-SCENARIO=(shared)
+SCENARIO=(scenario)
 
-BOARD=(nuc11tnbi5)
+BOARD=(tglu-rvp)
 
 #Build info End
 
