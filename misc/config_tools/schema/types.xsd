@@ -165,6 +165,24 @@ Read more about the available scheduling options in :ref:`cpu_sharing`.</xs:docu
   </xs:restriction>
 </xs:simpleType>
 
+<xs:simpleType name="FreqInterfaceType">
+  <xs:annotation>
+    <xs:documentation>A string specifying the Select the hardware interface for the hypervisor to adjust CPU frequency:
+
+- ``HWP``: Use HWP interface.
+- ``ACPI p-state``: Use ACPI p-state.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string">
+    <xs:enumeration value="HWP">
+      <xs:annotation acrn:title="HWP" />
+    </xs:enumeration>
+    <xs:enumeration value="ACPI">
+      <xs:annotation acrn:title="ACPI p-state" />
+    </xs:enumeration>
+  </xs:restriction>
+</xs:simpleType>
+
 <xs:simpleType name="PriorityType">
   <xs:annotation>
     <xs:documentation>Two priorities are supported for priority based scheduler:

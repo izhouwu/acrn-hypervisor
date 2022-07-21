@@ -139,13 +139,25 @@
 
 <xs:complexType name="CPUPerformanceType">
   <xs:all>
-    <xs:element name="CPUFreqGovernor" type="GovernorType" default="Performance">
+    <xs:element name="CPU_FREQ_GOVERNOR" type="GovernorType" default="Performance">
       <xs:annotation acrn:title="CPU frequency governor" acrn:views="advanced">
-        <xs:documentation>Select the frequency governor for running on the physical CPU.</xs:documentation>
+        <xs:documentation>Select the frequency governor for the hypervisor to administrate CPU performance.
+
+- ``Performance``: CPU may run at its maximum frequency.
+- ``Nonimal``: CPU runs at its guaranteed frequency.</xs:documentation>
       </xs:annotation>
     </xs:element>
-
-  </xs:all>
+    <xs:element name="CPU_FREQ_INTERFACE" type="FreqInterfaceType" default="HWP">
+      <xs:annotation acrn:title="CPU frequency interface" acrn:views="advanced">
+        <xs:documentation>Select the hardware interface for the hypervisor to adjust CPU frequency.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+    <xs:element name="PASSTHROUGH_PSTATE" type="Boolean" default="n">
+      <xs:annotation acrn:title="Passthrough ACPI p-state" acrn:views="advanced">
+        <xs:documentation>Check to passthrough ACPI p-state control to guests if its physical CPU is not shared.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>  
 </xs:complexType>
 
 <xs:complexType name="CapacitiesOptionsType">
@@ -300,8 +312,8 @@ Refer to :ref:`vuart_config` for detailed vUART settings.</xs:documentation>
         <xs:documentation>Specify the cache setting.</xs:documentation>
       </xs:annotation>
     </xs:element>
-    <xs:element name="CPU_PERFORMANCE" type="CPUPerformanceType" minOccurs="0">
-      <xs:annotation acrn:views="advanced">
+    <xs:element name="CPU_PERFORMANCE" type="CPUPerformanceType">
+      <xs:annotation acrn:title="CPU performance options" acrn:views="advanced">
         <xs:documentation>Specify the CPU performance setting.</xs:documentation>
       </xs:annotation>
     </xs:element>
