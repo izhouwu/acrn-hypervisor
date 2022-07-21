@@ -147,6 +147,24 @@ Read more about the available scheduling options in :ref:`cpu_sharing`.</xs:docu
   </xs:restriction>
 </xs:simpleType>
 
+<xs:simpleType name="GovernorType">
+  <xs:annotation>
+    <xs:documentation>A string specifying the CPU frequency governor option:
+
+- ``Performance``: CPU may run at its maximum frequency.
+- ``Nonimal``: CPU runs at its guaranteed frequency.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string">
+    <xs:enumeration value="Performance">
+      <xs:annotation acrn:title="Performance" />
+    </xs:enumeration>
+    <xs:enumeration value="Nonimal">
+      <xs:annotation acrn:title="Nonimal" />
+    </xs:enumeration>
+  </xs:restriction>
+</xs:simpleType>
+
 <xs:simpleType name="PriorityType">
   <xs:annotation>
     <xs:documentation>Two priorities are supported for priority based scheduler:

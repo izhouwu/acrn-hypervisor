@@ -137,6 +137,17 @@
   </xs:all>
 </xs:complexType>
 
+<xs:complexType name="CPUPerformanceType">
+  <xs:all>
+    <xs:element name="CPUFreqGovernor" type="GovernorType" default="Performance">
+      <xs:annotation acrn:title="CPU frequency governor" acrn:views="advanced">
+        <xs:documentation>Select the frequency governor for running on the physical CPU.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+
+  </xs:all>
+</xs:complexType>
+
 <xs:complexType name="CapacitiesOptionsType">
   <xs:annotation>
     <xs:documentation>Capacity limits for static assigned data structure or maximum supported resource.</xs:documentation>
@@ -287,6 +298,11 @@ Refer to :ref:`vuart_config` for detailed vUART settings.</xs:documentation>
     <xs:element name="CACHE_REGION" type="CacheRegionType" minOccurs="0">
       <xs:annotation acrn:views="advanced">
         <xs:documentation>Specify the cache setting.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+    <xs:element name="CPU_PERFORMANCE" type="CPUPerformanceType" minOccurs="0">
+      <xs:annotation acrn:views="advanced">
+        <xs:documentation>Specify the CPU performance setting.</xs:documentation>
       </xs:annotation>
     </xs:element>
   </xs:all>
