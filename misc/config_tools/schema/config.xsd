@@ -144,12 +144,12 @@
 
 <xs:complexType name="CPUPerformanceType">
   <xs:all>
-    <xs:element name="CPUFREQ_GOVERNOR" type="GovernorType" default="Performance">
+    <xs:element name="CPUFREQ_GOVERNOR" type="GovernorType" default="CPUFREQ_GOVERNOR_PERFORMANCE">
       <xs:annotation acrn:title="CPU frequency governor" acrn:views="advanced">
         <xs:documentation>Select the frequency governor for the hypervisor to administrate CPU performance.
 
 - ``Performance``: CPU may run at its maximum frequency.
-- ``Nonimal``: CPU runs at its guaranteed frequency.</xs:documentation>
+- ``Nominal``: CPU runs at its guaranteed frequency.</xs:documentation>
       </xs:annotation>
     </xs:element>
     <xs:element name="CPUFREQ_INTERFACE" type="FreqInterfaceType" default="HWP">
