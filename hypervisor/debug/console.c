@@ -22,7 +22,7 @@ struct hv_timer console_timer;
 
 #define CONSOLE_KICK_TIMER_TIMEOUT  40UL /* timeout is 40ms*/
 /* Switching key combinations for shell and uart console */
-#define GUEST_CONSOLE_TO_HV_SWITCH_KEY      0       /* CTRL + SPACE */
+#define GUEST_CONSOLE_TO_HV_SWITCH_KEY      0x11       /* CTRL + SPACE */
 uint16_t console_vmid = ACRN_INVALID_VMID;
 
 static void parse_hvdbg_cmdline(void)

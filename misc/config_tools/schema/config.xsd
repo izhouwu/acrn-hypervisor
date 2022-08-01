@@ -152,12 +152,12 @@
 - ``Nominal``: CPU runs at its guaranteed frequency.</xs:documentation>
       </xs:annotation>
     </xs:element>
-    <xs:element name="CPUFREQ_INTERFACE" type="FreqInterfaceType" default="HWP">
+    <xs:element name="CPUFREQ_INTERFACE" type="FreqInterfaceType" default="CPUFREQ_INTERFACE_HWP">
       <xs:annotation acrn:title="CPU frequency interface" acrn:views="advanced">
         <xs:documentation>Select the hardware interface for the hypervisor to adjust CPU frequency.</xs:documentation>
       </xs:annotation>
     </xs:element>
-    <xs:element name="PASSTHROUGH_PSTATE" type="Boolean" default="n">
+    <xs:element name="PT_ACPI_PSTATE" type="Boolean" default="n">
       <xs:annotation acrn:title="Passthrough ACPI p-state" acrn:views="advanced">
         <xs:documentation>Check to passthrough ACPI p-state control to guests if its physical CPU is not shared.</xs:documentation>
       </xs:annotation>

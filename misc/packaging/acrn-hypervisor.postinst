@@ -7,9 +7,9 @@ set -e
 
 #Build info Start
 
-SCENARIO=(shared)
+SCENARIO=(acrn-hypervisor)
 
-BOARD=(nuc11tnbi5)
+BOARD=(test)
 
 #Build info End
 

@@ -17,6 +17,7 @@
 #include <logmsg.h>
 #include <asm/rdt.h>
 #include <asm/guest/vcat.h>
+#include <asm/per_cpu.h>
 
 static inline const struct vcpuid_entry *local_find_vcpuid_entry(const struct acrn_vcpu *vcpu,
 					uint32_t leaf, uint32_t subleaf)
@@ -115,6 +116,12 @@ static void init_vcpuid_entry(uint32_t leaf, uint32_t subleaf,
 	entry->flags = flags;
 
 	switch (leaf) {
+
+	case 0x06U:
+		cpuid_subleaf(leaf, subleaf, &entry->eax, &entry->ebx, &entry->ecx, &entry->edx);
+		entry->eax &= ~CPUID_06_EAX_HWP;
+		break;
+
 	case 0x07U:
 		if (subleaf == 0U) {
 			uint64_t cr4_reserved_mask = get_cr4_reserved_bits();
@@ -626,6 +633,9 @@ static void guest_cpuid_01h(struct acrn_vcpu *vcpu, uint32_t *eax, uint32_t *ebx
 
 	/* mask Safer Mode Extension */
 	*ecx &= ~CPUID_ECX_SMX;
+
+	if (!(get_vm_config(vcpu->vm->vm_id)->pt_acpi_pstate))
+		*ecx &= ~CPUID_ECX_EST;
 
 	/* mask SDBG for silicon debug */
 	*ecx &= ~CPUID_ECX_SDBG;

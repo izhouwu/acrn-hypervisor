@@ -4,6 +4,7 @@
 #
 
 import logging
+import subprocess
 import lxml.etree
 import re
 
@@ -47,7 +48,7 @@ def extract_model(processors_node, cpu_id, family_id, model_id, core_type, nativ
             brandstring += leaf_data.brandstring
         n.set("description", re.sub('[^!-~]+', ' ', brandstring.decode()).strip())
 
-        leaves = [(1, 0), (7, 0), (0x80000001, 0), (0x80000007, 0)]
+        leaves = [(1, 0), (6, 0), (7, 0), (0x80000001, 0), (0x80000007, 0)]
         for leaf in leaves:
             leaf_data = parse_cpuid(leaf[0], leaf[1], cpu_id)
             for cap in leaf_data.capability_bits:
@@ -69,6 +70,13 @@ def extract_model(processors_node, cpu_id, family_id, model_id, core_type, nativ
             leaf_data = parse_cpuid(leaf[0], leaf[1], cpu_id)
             for cap in leaf_data.attribute_bits:
                 add_child(n, "attribute", str(getattr(leaf_data, cap)), id=cap)
+        
+        msr_regs = [MSR_TURBO_RATIO_LIMIT,]
+        for msr_reg in msr_regs:
+            msr_data = msr_reg.rdmsr(cpu_id)
+            for attr in msr_data.attribute_bits:
+                print(attr, getattr(msr_data, attr))
+                add_child(n, "attribute", str(getattr(msr_data, attr)), id=attr)
 
 def extract_topology(processors_node):
     cpu_ids = get_online_cpu_ids()
@@ -130,6 +138,50 @@ def extract_topology(processors_node):
             last_shift = leaf_topo.num_bit_shift
             subleaf += 1
 
+def extract_hwp_info(processors_node):
+    if processors_node.xpath("//capability[@id = 'hwp_supported']") is None:
+        print("hwp off")
+        return
+    else:
+        print("hwp on")
+
+    try:
+        subprocess.check_call('/usr/sbin/wrmsr 0x770 1', shell=True, stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError:
+        logging.debug("MSR 0x770 write failed!")
+        return
+    
+    threads = processors_node.xpath("//thread")
+    for thread in threads:
+        cpu_id = get_node(thread, "cpu_id/text()")
+        print("hwp for cpu ", cpu_id) 
+        msr_regs = [MSR_IA32_HWP_CAPABILITIES,]
+        for msr_reg in msr_regs:
+            msr_data = msr_reg.rdmsr(cpu_id)
+            for attr in msr_data.attribute_bits:
+                print(attr, str(getattr(msr_data, attr)))
+                add_child(thread, attr, str(getattr(msr_data, attr)))
+
+
+def extract_psd_info(processors_node):
+    sysnode = '/sys/devices/system/cpu/'
+    threads = processors_node.xpath("//thread")
+    for thread in threads:
+        cpu_id = get_node(thread, "cpu_id/text()")
+        print("psd for cpu ", cpu_id)
+
+        try:
+            with open(sysnode + "cpu{cpu_id}/cpufreq/freqdomain_cpus", 'r') as f_node:
+                freqdomain_cpus = f_node.read()
+        except IOError:
+            logging.info("No _PSD info for cpu {cpu_id}")
+            freqdomain_cpus = cpu_id
+
+        freqdomain_cpus.replace('\n','')
+        add_child(thread, "freqdomain_cpus", freqdomain_cpus)
+
 def extract(args, board_etree):
     processors_node = get_node(board_etree, "//processors")
     extract_topology(processors_node)
+    extract_hwp_info(processors_node)
+    extract_psd_info(processors_node)

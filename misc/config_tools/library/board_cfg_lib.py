@@ -349,6 +349,19 @@ def get_pci_info(board_info):
 
     return (pci_desc, pci_bdf_vpid)
 
+def get_p_state_count():
+    """
+    Get cpu p-state count
+    :return: p-state count
+    """
+    px_info = get_info(common.BOARD_INFO_FILE, "<PX_INFO>", "</PX_INFO>")
+    if px_info != None:
+        for line in px_info:
+            if re.search("{*,", line) == None:
+                px_info.remove(line)
+
+    return len(px_info)
+
 HI_MMIO_OFFSET = 0
 
 class Bar_Mem:

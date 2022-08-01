@@ -174,10 +174,10 @@ Read more about the available scheduling options in :ref:`cpu_sharing`.</xs:docu
     </xs:documentation>
   </xs:annotation>
   <xs:restriction base="xs:string">
-    <xs:enumeration value="HWP">
+    <xs:enumeration value="CPUFREQ_INTERFACE_HWP">
       <xs:annotation acrn:title="HWP" />
     </xs:enumeration>
-    <xs:enumeration value="ACPI">
+    <xs:enumeration value="CPUFREQ_INTERFACE_ACPI">
       <xs:annotation acrn:title="ACPI p-state" />
     </xs:enumeration>
   </xs:restriction>

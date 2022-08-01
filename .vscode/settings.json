@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "per_cpu.h": "c",
+        "board.h": "c",
+        "types.h": "c",
+        "acrn_common.h": "c",
+        "list.h": "c",
+        "vm_config.h": "c",
+        "host_pm.h": "c"
+    }
+}

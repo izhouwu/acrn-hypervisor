@@ -522,6 +522,35 @@ struct acrn_pstate_data {
 	uint64_t status;		/* success indicator */
 };
 
+struct acrn_cpufreq_policy {
+	bool available;
+	/*
+	 * Frequency levels:
+	 * for HWP, it is the continuous performance level for HWP_REQUEST msr;
+	 * for ACPI p-state, it is the APCI Px performance level x
+	*/
+	uint8_t policy_guaranteed_lvl; 
+	uint8_t policy_highest_lvl;
+	uint8_t policy_lowest_lvl;
+};
+
+enum cpufreq_governor_type {
+	CPUFREQ_GOVERNOR_PERFORMANCE,
+	CPUFREQ_GOVERNOR_NOMINAL,
+};
+
+enum cpufreq_interface_type {
+	CPUFREQ_INTERFACE_NONE = 0,
+	CPUFREQ_INTERFACE_HWP,
+	CPUFREQ_INTERFACE_ACPI,
+};
+
+struct acrn_cpufreq_info {
+	enum cpufreq_governor_type governor_type;
+	enum cpufreq_interface_type interface_type;
+	struct acrn_cpufreq_policy *policy;
+};
+
 struct acpi_sx_pkg {
 	uint8_t		val_pm1a;
 	uint8_t		val_pm1b;

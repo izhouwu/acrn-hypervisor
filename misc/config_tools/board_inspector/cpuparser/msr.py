@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 
-from cpuparser.platformbase import MSR, msrfield
+from cgitb import enable
+from cpuparser.platformbase import MSR, msrfield, msrfields
 
 class MSR_IA32_MISC_ENABLE(MSR):
     addr = 0x1a0
@@ -216,4 +217,24 @@ class MSR_IA32_VMX_ENTRY_CTLS(MSR):
     capability_bits = [
         "vmx_entry_ctls_load_pat",
         "vmx_entry_ctls_ia32e_mode",
+    ]
+
+class MSR_IA32_HWP_CAPABILITIES(MSR):
+    addr = 0x00000771
+    highest_performance_lvl = msrfields(7, 0, doc=None)
+    guaranteed_performance_lvl = msrfields(15, 8, doc=None)
+    lowest_performance_lvl = msrfields(31, 24, doc=None)
+
+    attribute_bits = [
+        "highest_performance_lvl",
+        "guaranteed_performance_lvl",
+        "lowest_performance_lvl",
+    ]
+
+class MSR_TURBO_RATIO_LIMIT(MSR):
+    addr = 0x000001ad
+    max_ratio_1core = msrfields(7, 0, doc=None)
+
+    attribute_bits = [
+        "max_ratio_1core",
     ]

@@ -1058,7 +1058,7 @@ int32_t hcall_get_cpu_pm_state(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm
 			 * If it is stored as per-cpu in the future,
 			 * we need to check PMCMD_VCPUID_MASK in cmd.
 			 */
-			if (target_vm->pm.px_cnt == 0U) {
+			if (target_vm->pm.px_cnt == 0U || !(get_vm_config(target_vm->vm_id)->pt_acpi_pstate)) {
 				break;
 			}
 
