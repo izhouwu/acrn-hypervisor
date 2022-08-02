@@ -285,12 +285,18 @@ class LEAF_6(CPUID):
     arat_supported = cpuidfield(EAX, 2, 2, doc = "APIC-Timer-always-running feature is supported if set")
     pln_supported = cpuidfield(EAX, 4, 4, doc = "Power limit notification controls are supported if set")
     ecmd_supported = cpuidfield(EAX, 5, 5, doc = "Clock modulation duty cycle extension is supported if set")
+    hwp_supported = cpuidfield(EAX, 7, 7, doc = "HWP base registers (IA32_PM_ENABLE[bit 0], IA32_HWP_CAPABILITIES, IA32_HWP_REQUEST, IA32_HWP_STATUS) are supported if set")
     package_thermal_management_supported = cpuidfield(EAX, 6, 6, doc = "Package thermal management is supported if set")
 
     num_interrupt_thresholds = cpuidfield(EBX, 3, 0, doc="Number of interrupt thresholds in digital thermal sensor")
 
     hardware_coordination_feedback_capability = cpuidfield(ECX, 0, 0, doc="Hardware coordination feedback capability")
     performance_energy_bias = cpuidfield(ECX, 3, 3, doc="Performance-energy bias preference support")
+
+    capability_bits = [
+        "turbo_boost_available",
+        "hwp_supported",
+    ]
 
 class LEAF_7(CPUID):
     """Structured Extended Feature Flags Enumeration Leaf

@@ -230,3 +230,15 @@ class msrfield(property):
     @staticmethod
     def is_ctrl_setting_allowed(msr_val, ctrl):
         return ((msr_val >> 32) & ctrl) == ctrl
+
+class msrfields(property):
+    def __init__(self, msb, lsb, doc="Bogus"):
+        self.msb = msb
+        self.lsb = lsb
+
+        max_value = (1 << (msb - lsb + 1)) - 1
+        field_mask = max_value << lsb
+
+        def getter(self):
+            return (self.value & field_mask) >> lsb
+        super(msrfields, self).__init__(getter, doc=doc)

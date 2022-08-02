@@ -37,7 +37,7 @@ class AddLLCCATAction(argparse.Action):
 
 def check_deps():
     # Check that the required tools are installed on the system
-    BIN_LIST = ['cpuid', 'rdmsr', 'lspci', ' dmidecode', 'blkid', 'stty']
+    BIN_LIST = ['cpuid', 'rdmsr', 'wrmsr', 'lspci', ' dmidecode', 'blkid', 'stty']
     cpuid_min_ver = 20170122
     had_error = False
     for execute in BIN_LIST:
