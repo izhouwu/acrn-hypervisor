@@ -449,6 +449,39 @@ def gen_known_caps_pci_devs(config):
                 if i == (bdf_list_len - 1):
                     print("};", file=config)
 
+def gen_cpufreq_info(config):
+    allocation_dir = os.path.split(common.SCENARIO_INFO_FILE)[0] + "/configs/allocation.xml"
+    allocation_etree = lxml.etree.parse(allocation_dir)
+    cpu_list = board_cfg_lib.get_processor_info()
+    max_cpu_num = len(cpu_list)
+
+    print("\nstruct acrn_cpufreq_policy cpufreq_policy_info[MAX_PCPU_NUM] = {", file=config)
+    for cpu_id in range(max_cpu_num):
+        available = 'false'
+        policy_node = common.get_node(f"//cpufreq/CPU[@id='{cpu_id}']/policy", allocation_etree)
+        if policy_node != None:
+            available = "true"
+            policy_guaranteed_lvl = common.get_node("./policy_guaranteed_lvl/text()", policy_node)
+            policy_highest_lvl = common.get_node("./policy_highest_lvl/text()", policy_node)
+            policy_lowest_lvl = common.get_node("./policy_lowest_lvl/text()", policy_node)
+
+        print("\t{", file=config)
+        print(f"\t\t.available = {available},", file=config)
+        if available == 'true':
+            print(f"\t\t.policy_guaranteed_lvl = {policy_guaranteed_lvl},", file=config)
+            print(f"\t\t.policy_highest_lvl = {policy_highest_lvl},", file=config)
+            print(f"\t\t.policy_lowest_lvl = {policy_lowest_lvl},", file=config)
+        print("\t},", file=config)
+    print("};", file=config)
+
+    print("\nconst struct acrn_cpufreq_info cpufreq_info = {", file=config)
+
+    governor = common.get_node(f"//cpufreq/governor/text()", allocation_etree)
+    interface = common.get_node(f"//cpufreq/interface/text()", allocation_etree)
+    print(f"\t.governor_type = {governor},", file=config)
+    print(f"\t.interface_type = {interface},", file=config)
+    print("\t.policy = cpufreq_policy_info,", file=config)
+    print("};", file=config)
 
 def generate_file(config):
     """
@@ -478,5 +511,7 @@ def generate_file(config):
 
     # gen known caps of pci dev info for platform
     gen_known_caps_pci_devs(config)
+
+    gen_cpufreq_info(config)
 
     return err_dic
