@@ -118,6 +118,11 @@
         <xs:documentation>Configure Software SRAM. This feature reserves memory buffers as always-cached memory to improve an application's real-time performance.</xs:documentation>
       </xs:annotation>
     </xs:element>
+    <xs:element name="CPU_PERFORMANCE" type="CPUPerformanceType">
+      <xs:annotation acrn:title="CPU performance options" acrn:views="advanced">
+        <xs:documentation>Specify the CPU performance setting.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
   </xs:all>
 </xs:complexType>
 
@@ -132,6 +137,24 @@
     <xs:element name="HV_RAM_START" type="HexFormat" minOccurs="0">
       <xs:annotation acrn:views="">
         <xs:documentation>The 2MB-aligned starting physical address of the RAM region used by the hypervisor.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="CPUPerformanceType">
+  <xs:all>
+    <xs:element name="CPUFREQ_GOVERNOR" type="GovernorType" default="CPUFREQ_GOVERNOR_PERFORMANCE">
+      <xs:annotation acrn:title="CPU frequency governor" acrn:views="advanced">
+        <xs:documentation>Select the frequency governor for the hypervisor to administrate CPU performance.
+
+- ``Performance``: CPU may run at its maximum frequency.
+- ``Nominal``: CPU runs at its guaranteed frequency.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+    <xs:element name="CPUFREQ_INTERFACE" type="FreqInterfaceType" default="CPUFREQ_INTERFACE_HWP">
+      <xs:annotation acrn:title="CPU frequency interface" acrn:views="advanced">
+        <xs:documentation>Select the hardware interface for the hypervisor to adjust CPU frequency.</xs:documentation>
       </xs:annotation>
     </xs:element>
   </xs:all>
