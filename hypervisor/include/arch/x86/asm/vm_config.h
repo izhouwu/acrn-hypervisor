@@ -207,6 +207,8 @@ struct acrn_vm_config {
 
 	uint16_t pt_intx_num; /* number of pt_intx_config entries pointed by pt_intx */
 	struct pt_intx_config *pt_intx; /* stores the base address of struct pt_intx_config array */
+
+	bool pt_acpi_pstate; /* whether to passthru acpi pstate */
 } __aligned(8);
 
 struct acrn_vm_config *get_vm_config(uint16_t vm_id);

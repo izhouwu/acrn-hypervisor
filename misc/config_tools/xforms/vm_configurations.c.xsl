@@ -97,6 +97,7 @@
 
     <xsl:call-template name="load_order" />
     <xsl:apply-templates select="name" />
+    <xsl:call-template name="pt_acpi_pstate" />
     <xsl:if test="acrn:is-service-vm(load_order)">
       <xsl:value-of select="acrn:comment('Allow Service VM to reboot the system since it is the highest priority VM.')" />
       <xsl:value-of select="$newline" />
@@ -156,6 +157,13 @@
 
   <xsl:template match="name">
     <xsl:value-of select="acrn:initializer('name', concat($quot, current(), $quot))" />
+  </xsl:template>
+
+  <xsl:template name="pt_acpi_pstate">
+    <xsl:variable name="vm_id" select="@id" />
+    <xsl:if test="//allocation-data/acrn-config/vm[@id=$vm_id]/vm_pt_acpi_pstate = 'y'">
+      <xsl:value-of select="acrn:initializer('pt_acpi_pstate', 'true')" />
+    </xsl:if>
   </xsl:template>
 
   <xsl:template name="cpu_affinity">

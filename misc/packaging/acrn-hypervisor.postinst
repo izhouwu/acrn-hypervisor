@@ -7,9 +7,9 @@ set -e
 
 #Build info Start
 
-SCENARIO=(shared)
+SCENARIO=(scen.tglu)
 
-BOARD=(nuc11tnbi5)
+BOARD=(tglu-rvp-test)
 
 #Build info End
 
