@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include <sched.h>
 #include <sys/types.h>
+#include <stdbool.h>
 
 #define MAXCOMLEN   19      /* max command name remembered */
 #define MAXINTERP   PATH_MAX    /* max interpreter file name length */

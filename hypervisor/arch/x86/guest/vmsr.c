@@ -52,6 +52,9 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 	MSR_IA32_TIME_STAMP_COUNTER,
 	MSR_IA32_APIC_BASE,
 	MSR_IA32_PERF_CTL,
+	MSR_IA32_PM_ENABLE,
+	MSR_IA32_HWP_CAPABILITIES,
+	MSR_IA32_HWP_REQUEST,
 	MSR_IA32_FEATURE_CONTROL,
 
 	MSR_IA32_MCG_CAP,
@@ -627,6 +630,21 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		v = msr_read(msr);
 		break;
 	}
+	case MSR_IA32_PM_ENABLE:
+	{
+		vcpu_inject_gp(vcpu, 0U);
+		break;
+	}
+	case MSR_IA32_HWP_CAPABILITIES:
+	{
+		vcpu_inject_gp(vcpu, 0U);
+		break;
+	}
+	case MSR_IA32_HWP_REQUEST:
+	{
+		vcpu_inject_gp(vcpu, 0U);
+		break;
+	}
 	case MSR_IA32_PAT:
 	{
 		/*
@@ -997,10 +1015,24 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_PERF_CTL:
 	{
-		if (validate_pstate(vcpu->vm, v) != 0) {
-			break;
+		if (get_vm_config(vcpu->vm->vm_id)->pt_acpi_pstate) {
+			msr_write(msr, v);
 		}
-		msr_write(msr, v);
+		break;
+	}
+	case MSR_IA32_PM_ENABLE:
+	{
+		vcpu_inject_gp(vcpu, 0U);
+		break;
+	}
+	case MSR_IA32_HWP_CAPABILITIES:
+	{
+		vcpu_inject_gp(vcpu, 0U);
+		break;
+	}
+	case MSR_IA32_HWP_REQUEST:
+	{
+		vcpu_inject_gp(vcpu, 0U);
 		break;
 	}
 	case MSR_IA32_PAT:
