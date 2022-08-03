@@ -39,5 +39,7 @@ extern void restore_s3_context(void);
 struct cpu_state_info *get_cpu_pm_state_info(void);
 struct acpi_reset_reg *get_host_reset_reg_data(void);
 void reset_host(void);
+void init_cpu_freq(void);
+void cpu_freq_pcpu_online(void);
 
 #endif	/* HOST_PM_H */

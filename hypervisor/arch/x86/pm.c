@@ -19,6 +19,7 @@
 #include <asm/lapic.h>
 #include <asm/tsc.h>
 #include <delay.h>
+#include <asm/board.h>
 
 struct cpu_context cpu_ctx;
 
@@ -269,5 +270,63 @@ void reset_host(void)
 	pr_fatal("%s(): can't reset host.", __func__);
 	while (1) {
 		asm_pause();
+	}
+}
+
+/*
+ * set the cpu's performance level range
+ * The performance level is not necessary CPU's frequency ratio.
+ * When using HWP, the levels represents the level used in HWP_REQUEST MSR, while using ACPI p-state, it represents
+ * the Px level 'x' descripted in ACPI _PSS table.
+ *
+ * For ACPI p-state, it does not have the hardware automatic frequency adjust ablility, it can only set a fixed
+ * frequency. So this function assumes that highest_lvl = lowest_lvl when using ACPI p-state.
+ */
+static void cpu_freq_set_performance(uint8_t highest_lvl, uint8_t lowest_lvl)
+{
+	uint64_t reg;
+	pr_acrnlog("3");
+	if (cpufreq_info.interface_type == CPUFREQ_INTERFACE_HWP) {
+		reg = (0x80UL << 24) | (0x00UL << 16) | (((uint64_t)highest_lvl) << 8) | ((uint64_t)lowest_lvl);
+		msr_write(MSR_IA32_HWP_REQUEST, reg);
+
+	} else if (cpufreq_info.interface_type == CPUFREQ_INTERFACE_ACPI) {
+		struct cpu_state_info *pm_s_state_data = get_cpu_pm_state_info();
+		if (highest_lvl < pm_s_state_data->px_cnt) {
+			reg = pm_s_state_data->px_data[highest_lvl].control;
+			msr_write(MSR_IA32_PERF_CTL, reg);
+		}
+	}
+}
+
+/* called by boot cpu at initializing phase */
+void init_cpu_freq(void)
+{
+	uint16_t pcpu_id;
+
+	for (pcpu_id = 0; pcpu_id < MAX_PCPU_NUM; pcpu_id++) {
+		per_cpu(cpufreq_policy, pcpu_id) = &(cpufreq_policy_info[pcpu_id]);
+	}
+
+	if (cpufreq_info.interface_type == CPUFREQ_INTERFACE_HWP) {
+		msr_write(MSR_IA32_PM_ENABLE, 1U);
+	}
+}
+
+/* called by pcpu, setting its frequency at start up */
+void cpu_freq_pcpu_online(void)
+{
+	struct acrn_cpufreq_policy *policy = get_cpu_var(cpufreq_policy);
+
+	/*
+	 * Currently we have 2 governors:
+	 *   CPUFREQ_GOVERNOR_PERFORMANCE - CPU can run at up to its max frequency
+	 *   CPUFREQ_GOVERNOR_NOMINAL - CPU locked at its base/guaranteed frequency
+	 * You can chose one from offline tool.
+	*/
+	if (cpufreq_info.governor_type == CPUFREQ_GOVERNOR_PERFORMANCE && policy->available) {
+		cpu_freq_set_performance(policy->policy_highest_lvl, policy->policy_lowest_lvl);
+	} else if (cpufreq_info.governor_type == CPUFREQ_GOVERNOR_NOMINAL && policy->available) {
+		cpu_freq_set_performance(policy->policy_guaranteed_lvl, policy->policy_guaranteed_lvl);
 	}
 }
