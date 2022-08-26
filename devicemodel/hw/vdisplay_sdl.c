@@ -25,14 +25,16 @@
 #include <gl2.h>
 #include <gl2ext.h>
 
-#define VDPY_MAX_WIDTH 1920
-#define VDPY_MAX_HEIGHT 1080
+#define VDPY_MAX_WIDTH 3840
+#define VDPY_MAX_HEIGHT 2160
 #define VDPY_DEFAULT_WIDTH 1024
 #define VDPY_DEFAULT_HEIGHT 768
 #define VDPY_MIN_WIDTH 640
 #define VDPY_MIN_HEIGHT 480
 #define transto_10bits(color) (uint16_t)(color * 1024 + 0.5)
 #define VSCREEN_MAX_NUM 2
+#define EDID_BASIC_BLOCK_SIZE 128
+#define EDID_CEA861_EXT_BLOCK_SIZE 128
 
 static unsigned char default_raw_argb[VDPY_DEFAULT_WIDTH * VDPY_DEFAULT_HEIGHT * 4];
 
@@ -108,6 +110,7 @@ typedef enum {
 	ESTT = 1, // Established Timings I & II
 	STDT,    // Standard Timings
 	ESTT3,   // Established Timings III
+	CEA861,	// CEA-861 Timings
 } TIMING_MODE;
 
 static const struct timing_entry {
@@ -118,6 +121,8 @@ static const struct timing_entry {
 	uint32_t bit;   // bit idx
 	uint8_t hz;     // frequency
 	bool	is_std; // the flag of standard mode
+	bool	is_cea861; // CEA-861 timings
+	uint8_t vic;	// Video Indentification Code
 } timings[] = {
 	/* Established Timings I & II (all @ 60Hz) */
 	{ .hpixel = 1280, .vpixel = 1024, .byte  = 36, .bit = 0, .hz = 75},
@@ -132,6 +137,9 @@ static const struct timing_entry {
 	{ .hpixel = 1600, .vpixel = 1200, .hz = 60,  .is_std = true },
 	{ .hpixel = 1600, .vpixel =  900, .hz = 60,  .is_std = true },
 	{ .hpixel = 1440, .vpixel =  900, .hz = 60,  .is_std = true },
+
+	/* CEA-861 Timings */
+	{ .hpixel = 3840, .vpixel = 2160, .hz = 60,  .is_cea861 = true, .vic = 97 },
 };
 
 typedef struct frame_param{
@@ -243,7 +251,7 @@ vdpy_edid_set_color(uint8_t *edid, float red_x, float red_y,
 	color[9] = wy >> 2;
 }
 
-static void
+static uint8_t
 vdpy_edid_set_timing(uint8_t *addr, TIMING_MODE mode)
 {
 	static uint16_t idx;
@@ -252,8 +260,10 @@ vdpy_edid_set_timing(uint8_t *addr, TIMING_MODE mode)
 	uint8_t stdcnt;
 	uint16_t hpixel;
 	int16_t AR;
+	uint8_t num_timings;
 
 	stdcnt = 0;
+	num_timings = 0;
 
 	if(mode == STDT) {
 		addr += 38;
@@ -318,6 +328,13 @@ vdpy_edid_set_timing(uint8_t *addr, TIMING_MODE mode)
 				continue;
 			}
 			break;
+		case CEA861: // CEA-861 Timings
+			if (timing->is_cea861) {
+				addr[0] = timing->vic;
+				addr += 1;
+				num_timings++;
+			}
+			break;
 		default:
 			continue;
 		}
@@ -328,12 +345,24 @@ vdpy_edid_set_timing(uint8_t *addr, TIMING_MODE mode)
 		addr += 2;
 		stdcnt++;
 	}
+
+	return num_timings;
 }
 
 static void
 vdpy_edid_set_dtd(uint8_t *dtd, const frame_param *frame)
 {
 	uint16_t pixel_clk;
+
+	if ((frame->pixel_clock / 10000) > 65535) {
+		/*
+		 * Large screen. The pixel_clock won't fit in two bytes.
+		 * We fill in a dummy DTD here and OS will pick up PTM
+		 * from extension block.
+		 */
+		dtd[3] = 0x10; /* Tag 0x10: Dummy descriptor */
+		return;
+	}
 
 	// Range: 10 kHz to 655.35 MHz in 10 kHz steps
 	pixel_clk = frame->pixel_clock / 10000;
@@ -438,6 +467,7 @@ vdpy_edid_generate(uint8_t *edid, size_t size, struct edid_info *info)
 	uint32_t serial;
 	uint8_t *desc;
 	base_param b_param;
+	uint8_t num_cea_timings;
 
 	vdpy_edid_set_baseparam(&b_param, info->prefx, info->prefy);
 
@@ -519,6 +549,25 @@ vdpy_edid_generate(uint8_t *edid, size_t size, struct edid_info *info)
 
 	/* Checksum */
 	edid[127] = vdpy_edid_get_checksum(edid);
+
+	if (size >= (EDID_BASIC_BLOCK_SIZE + EDID_CEA861_EXT_BLOCK_SIZE)) {
+		edid[126] = 1;
+		edid[127] = vdpy_edid_get_checksum(edid);
+
+		// CEA EDID Extension
+		edid[EDID_BASIC_BLOCK_SIZE + 0] = 0x02;
+		// Revision Number
+		edid[EDID_BASIC_BLOCK_SIZE + 1] = 0x03;
+		// SVDs
+		edid[EDID_BASIC_BLOCK_SIZE + 4] |= 0x02 << 5;
+		desc = edid + EDID_BASIC_BLOCK_SIZE + 5;
+		num_cea_timings = vdpy_edid_set_timing(desc, CEA861);
+		edid[EDID_BASIC_BLOCK_SIZE + 4] |= num_cea_timings;
+		edid[EDID_BASIC_BLOCK_SIZE + 2] |= 5 + num_cea_timings;
+
+		desc = edid + EDID_BASIC_BLOCK_SIZE;
+		edid[EDID_BASIC_BLOCK_SIZE + 127] = vdpy_edid_get_checksum(desc);
+	}
 }
 
 void
@@ -1001,7 +1050,7 @@ void
 vdpy_calibrate_vscreen_geometry(struct vscreen *vscr)
 {
 	if (vscr->guest_width && vscr->guest_height) {
-		/* clip the region between (640x480) and (1920x1080) */
+		/* clip the region between (640x480) and (3840x2160) */
 		if (vscr->guest_width < VDPY_MIN_WIDTH)
 			vscr->guest_width = VDPY_MIN_WIDTH;
 		if (vscr->guest_width > VDPY_MAX_WIDTH)
@@ -1011,7 +1060,7 @@ vdpy_calibrate_vscreen_geometry(struct vscreen *vscr)
 		if (vscr->guest_height > VDPY_MAX_HEIGHT)
 			vscr->guest_height = VDPY_MAX_HEIGHT;
 	} else {
-		/* the default window(1280x720) is created with undefined pos
+		/* the default window(1920x1080) is created with undefined pos
 		 * when no geometry info is passed
 		 */
 		vscr->org_x = 0xFFFF;
@@ -1086,14 +1135,15 @@ vdpy_sdl_display_thread(void *data)
 	
 		vdpy_calibrate_vscreen_geometry(vscr);
 
+		if (vdpy_create_vscreen_window(vscr)) {
+			goto sdl_fail;
+		}
+
 		vscr->info.xoff = vscr->org_x;
 		vscr->info.yoff = vscr->org_y;
 		vscr->info.width = vscr->guest_width;
 		vscr->info.height = vscr->guest_height;
 
-		if (vdpy_create_vscreen_window(vscr)) {
-			goto sdl_fail;
-		}
 		clock_gettime(CLOCK_MONOTONIC, &vscr->last_time);
 	}
 	sdl_gl_display_init();

@@ -74,7 +74,7 @@
 #define VIRTIO_GPU_FLAG_FENCE	(1 << 0)
 #define VIRTIO_GPU_VGA_FB_SIZE	16 * MB
 #define VIRTIO_GPU_VGA_DMEMSZ	128
-#define VIRTIO_GPU_EDID_SIZE	384
+#define VIRTIO_GPU_EDID_SIZE	256
 #define VIRTIO_GPU_VGA_IOPORT_OFFSET	0x400
 #define VIRTIO_GPU_VGA_IOPORT_SIZE	(0x3e0 - 0x3c0)
 #define VIRTIO_GPU_VGA_VBE_OFFSET	0x500
@@ -571,8 +571,7 @@ virtio_gpu_cmd_get_edid(struct virtio_gpu_command *cmd)
 		memcpy(cmd->iov[1].iov_base, &resp, sizeof(resp));
 		return;
 	}
-	/* Only one EDID block is enough */
-	resp.size = 128;
+	resp.size = VIRTIO_GPU_EDID_SIZE;
 	resp.hdr.type = VIRTIO_GPU_RESP_OK_EDID;
 	vdpy_get_edid(gpu->vdpy_handle, req.scanout, resp.edid, resp.size);
 	memcpy(cmd->iov[1].iov_base, &resp, sizeof(resp));
