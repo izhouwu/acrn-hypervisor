@@ -1375,6 +1375,11 @@ gfx_ui_init()
 			SDL_Quit();
 			return -1;
 		}
+
+		if (vscr->is_fullscreen) {
+			vscr->guest_width = vscr->pscreen_rect.w;
+			vscr->guest_height = vscr->pscreen_rect.h;
+		}
 	}
 
 	SDL_SetHint(SDL_HINT_GRAB_KEYBOARD, "1");
