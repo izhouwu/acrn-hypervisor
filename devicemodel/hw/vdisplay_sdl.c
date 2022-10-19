@@ -32,7 +32,7 @@
 #define VDPY_MIN_WIDTH 640
 #define VDPY_MIN_HEIGHT 480
 #define transto_10bits(color) (uint16_t)(color * 1024 + 0.5)
-#define VSCREEN_MAX_NUM 2
+#define VSCREEN_MAX_NUM VDPY_MAX_NUM
 #define EDID_BASIC_BLOCK_SIZE 128
 #define EDID_CEA861_EXT_BLOCK_SIZE 128
 

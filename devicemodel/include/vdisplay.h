@@ -13,6 +13,8 @@
 #include <pixman.h>
 #include "dm.h"
 
+#define VDPY_MAX_NUM 4
+
 typedef void (*bh_task_func)(void *data);
 
 /* bh task is still pending */

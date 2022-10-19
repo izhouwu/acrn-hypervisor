@@ -1628,7 +1628,7 @@ virtio_gpu_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	gpu->base.mtx = &gpu->mtx;
 	gpu->base.device_caps = VIRTIO_GPU_S_HOSTCAPS;
 
-	if ((gpu->scanout_num < 0) || (gpu->scanout_num > 2)) {
+	if ((gpu->scanout_num < 0) || (gpu->scanout_num > VDPY_MAX_NUM)) {
 		pr_err("%s: return incorrect scanout num %d\n", gpu->scanout_num);
 		return -1;
 	}
