@@ -239,6 +239,7 @@ virtio_vhost_vsock_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	pthread_mutexattr_t attr;
 	char *devopts = NULL;
 	char *tmp = NULL;
+	struct vhost_vsock *vhost_vsock;
 
 	if (opts == NULL) {
 		pr_err(("vsock: must have a valid guest_cid.\n"));
@@ -296,16 +297,18 @@ virtio_vhost_vsock_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	pci_set_cfgdata16(dev, PCIR_REVID, 1);
 
 	virtio_set_modern_bar(&vsock->base, false);
-
-	vsock->vhost_vsock = vhost_vsock_init(&vsock->base, 0);
+	vhost_vsock = vhost_vsock_init(&vsock->base, 0);
+	if (!vhost_vsock) {
+		pr_err("vhost vosck init failed.");
+		free(vsock);
+		return -1;
+	}
+	vsock->vhost_vsock = vhost_vsock;
 	vhost_vsock_set_guest_cid(&vsock->vhost_vsock->vdev, vsock->config.guest_cid);
 
 	if (virtio_interrupt_init(&vsock->base, virtio_uses_msix())) {
-		if (vsock) {
-			if (vsock->vhost_vsock)
-				vhost_vsock_deinit(vsock->vhost_vsock);
-			free(vsock);
-		}
+		vhost_vsock_deinit(vsock->vhost_vsock);
+		free(vsock);
 		return -1;
 	}
 	return 0;
