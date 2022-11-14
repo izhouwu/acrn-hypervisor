@@ -1289,8 +1289,11 @@ vga_init(struct gfx_ctx *gc, int io_only)
 	struct inout_port iop;
 	struct vga_vdev *vd;
 	int port, error;
+	uint8_t *vga_ram;
 
 	vd = calloc(1, sizeof(struct vga_vdev));
+	if (!vd)
+		return NULL;
 
 	bzero(&iop, sizeof(struct inout_port));
 	iop.name = "VGA";
@@ -1326,7 +1329,12 @@ vga_init(struct gfx_ctx *gc, int io_only)
 		return NULL;
 	}
 
-	vd->vga_ram = malloc(256 * KB);
+	vga_ram = malloc(256 * KB);
+	if (!vga_ram) {
+		free(vd);
+		return NULL;
+	}
+	vd->vga_ram = vga_ram;
 	memset(vd->vga_ram, 0, 256 * KB);
 
 	{
