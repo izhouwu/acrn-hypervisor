@@ -51,7 +51,7 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 	MSR_IA32_BIOS_SIGN_ID,
 	MSR_IA32_TIME_STAMP_COUNTER,
 	MSR_IA32_APIC_BASE,
-	MSR_IA32_PERF_STATUS,
+//	MSR_IA32_PERF_STATUS,
 	MSR_IA32_PERF_CTL,
 	MSR_IA32_FEATURE_CONTROL,
 
@@ -76,6 +76,9 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 	MSR_IA32_IWKEY_BACKUP_STATUS,
 
 	MSR_TEST_CTL,
+
+	MSR_IA32_PM_ENABLE,
+	MSR_IA32_HWP_REQUEST,
 
 	/* VMX: CPUID.01H.ECX[5] */
 #ifdef CONFIG_NVMX_ENABLED
@@ -263,23 +266,23 @@ static const uint32_t unsupported_msrs[] = {
 	 * CPUID.06H.EAX[9]
 	 * CPUID.06H:EAX[10]
 	 */
-	MSR_IA32_PM_ENABLE,
-	MSR_IA32_HWP_CAPABILITIES,
-	MSR_IA32_HWP_REQUEST,
-	MSR_IA32_HWP_STATUS,
+	//MSR_IA32_PM_ENABLE,
+	//MSR_IA32_HWP_CAPABILITIES,
+	//MSR_IA32_HWP_REQUEST,
+	//MSR_IA32_HWP_STATUS,
 	/* HWP_Notification disabled:
 	 * CPUID.06H:EAX[8]
 	 */
-	MSR_IA32_HWP_INTERRUPT,
+	//MSR_IA32_HWP_INTERRUPT,
 	/* HWP_package_level disabled:
 	 * CPUID.06H:EAX[11]
 	 */
-	MSR_IA32_HWP_REQUEST_PKG,
+	//MSR_IA32_HWP_REQUEST_PKG,
 	/* Hardware Coordination Feedback Capability disabled:
 	 * CPUID.06H:ECX[0]
 	 */
-	MSR_IA32_MPERF,
-	MSR_IA32_APERF,
+	//MSR_IA32_MPERF,
+	//MSR_IA32_APERF,
 };
 
 /* emulated_guest_msrs[] shares same indexes with array vcpu->arch->guest_msrs[] */
@@ -573,7 +576,7 @@ static int32_t write_pat_msr(struct acrn_vcpu *vcpu, uint64_t value)
 
 	return ret;
 }
-
+#if 0
 /*
  * @brief get emulated IA32_PERF_STATUS reg value
  *
@@ -593,7 +596,7 @@ static uint64_t get_perf_status(void)
 	cpuid_subleaf(0x16U, 0U, &eax, &unused, &ecx, &unused);
 	return (uint64_t)(((eax/ecx) & 0xFFU) << 8);
 }
-
+#endif
 /**
  * @pre vcpu != NULL
  */
@@ -668,14 +671,19 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		v = get_microcode_version();
 		break;
 	}
-	case MSR_IA32_PERF_STATUS:
-	{
-		v = get_perf_status();
-		break;
-	}
 	case MSR_IA32_PERF_CTL:
 	{
 		v = vcpu_get_guest_msr(vcpu, MSR_IA32_PERF_CTL);
+		break;
+	}
+	case MSR_IA32_PM_ENABLE:
+	{
+		v = vcpu_get_guest_msr(vcpu, MSR_IA32_PM_ENABLE);
+		break;
+	}
+	case MSR_IA32_HWP_REQUEST:
+	{
+		v = vcpu_get_guest_msr(vcpu, MSR_IA32_HWP_REQUEST);
 		break;
 	}
 	case MSR_IA32_PAT:
@@ -1035,13 +1043,19 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		}
 		break;
 	}
-	case MSR_IA32_PERF_STATUS:
-	{
-		break;
-	}
 	case MSR_IA32_PERF_CTL:
 	{
 		vcpu_set_guest_msr(vcpu, MSR_IA32_PERF_CTL, v);
+		break;
+	}	
+	case MSR_IA32_PM_ENABLE:
+	{
+		vcpu_set_guest_msr(vcpu, MSR_IA32_PM_ENABLE, v);
+		break;
+	}
+	case MSR_IA32_HWP_REQUEST:
+	{
+		vcpu_set_guest_msr(vcpu, MSR_IA32_HWP_REQUEST, v);
 		break;
 	}
 	case MSR_IA32_PAT:

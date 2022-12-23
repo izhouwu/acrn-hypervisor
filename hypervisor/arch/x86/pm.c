@@ -278,6 +278,7 @@ static enum acrn_cpufreq_policy_type cpufreq_policy = CPUFREQ_POLICY_PERFORMANCE
 
 void init_frequency_policy(void)
 {
+#if 1
 	uint32_t cpuid_06_eax, unused;
 	struct acrn_boot_info *abi = get_acrn_boot_info();
 	const char *cmd_src = abi->cmdline;
@@ -296,6 +297,7 @@ void init_frequency_policy(void)
 		/* If HWP is available, enable HWP early. This will unlock other HWP MSRs. */
 		msr_write(MSR_IA32_PM_ENABLE, 1U);
 	}
+#endif	
 }
 
 /*
@@ -310,6 +312,7 @@ void init_frequency_policy(void)
  */
 void apply_frequency_policy(void)
 {
+#if 1	
 	struct acrn_cpufreq_limits *limits = &cpufreq_limits[get_pcpu_id()];
 	uint64_t highest_lvl_req = limits->highest_hwp_lvl, lowest_lvl_req = limits->lowest_hwp_lvl, reg;
 	uint8_t pstate_req = limits->performance_pstate;
@@ -353,4 +356,5 @@ void apply_frequency_policy(void)
 	} else {
 		/* If no frequency interface is presented, just let CPU run by itself. Do nothing here.*/
 	}
+#endif	
 }
