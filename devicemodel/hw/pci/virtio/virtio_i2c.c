@@ -87,6 +87,9 @@ static void acpi_add_i2c_adapter(struct pci_vdev *dev, int i2c_bus);
 static void acpi_add_cam1(struct pci_vdev *dev, int i2c_bus);
 static void acpi_add_cam2(struct pci_vdev *dev, int i2c_bus);
 static void acpi_add_hdac(struct pci_vdev *dev, int i2c_bus);
+static void acpi_add_rt5640_0(struct pci_vdev *dev, int i2c_bus);
+static void acpi_add_rt5640_1(struct pci_vdev *dev, int i2c_bus);
+static void acpi_add_rt5640_2(struct pci_vdev *dev, int i2c_bus);
 static void acpi_add_default(struct pci_vdev *dev, int i2c_bus);
 
 struct acpi_node {
@@ -99,6 +102,9 @@ static struct acpi_node acpi_node_table[] = {
 	{"cam1", acpi_add_cam1},
 	{"cam2", acpi_add_cam2},
 	{"hdac", acpi_add_hdac},
+	{"rt5640_0", acpi_add_rt5640_0},
+	{"rt5640_1", acpi_add_rt5640_1},
+	{"rt5640_2", acpi_add_rt5640_2},
 	{"default", acpi_add_default},
 };
 
@@ -373,6 +379,154 @@ acpi_add_hdac(struct pci_vdev *dev, int i2c_bus)
 	dsdt_line("        }");
 	dsdt_line("    }");
 	dsdt_line("}");
+}
+
+static void acpi_add_rt5640_0(struct pci_vdev *dev, int i2c_bus)
+{
+	dsdt_line("Scope(I2C%d)", i2c_bus);
+    dsdt_line("{");
+    dsdt_line("    Device (HDA0)");
+    dsdt_line("    {");
+    dsdt_line("        Name (_HID, \"10EC5640\" /* Realtek I2S Audio Codec */)  // _HID: Hardware ID");
+    dsdt_line("        Name (_CID, \"10EC5640\" /* Realtek I2S Audio Codec */)  // _CID: Compatible ID");
+    dsdt_line("        Name (_DDN, \"ALC5642\")  // _DDN: DOS Device Name");
+    dsdt_line("        Name (_UID, One)  // _UID: Unique ID");
+    dsdt_line("        Name (CADR, 0x1C)");
+    dsdt_line("        Name (CDIS, Zero)");
+    dsdt_line("        Method (_INI, 0, NotSerialized)  // _INI: Initialize");
+    dsdt_line("        {");
+    dsdt_line("            _HID = \"10EC5640\"");
+    dsdt_line("            _CID = \"10EC5640\"");
+    dsdt_line("            CADR = 0x1C");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_CRS, 0, NotSerialized)  // _CRS: Current Resource Settings");
+    dsdt_line("        {");
+	dsdt_line("            Name (IIC0, ResourceTemplate ()");
+	dsdt_line("            {");
+	dsdt_line("                I2cSerialBusV2 (0x001C, ControllerInitiated, 0x00061A80,");
+	dsdt_line("                AddressingMode7Bit, \"\\\\_SB.PCI%d.I2C%d\",", dev->bus, i2c_bus);
+	dsdt_line("                0x00, ResourceConsumer, , Exclusive,");
+	dsdt_line("                )");
+	dsdt_line("            })");
+	dsdt_line("            Return (IIC0)");	
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_STA, 0, NotSerialized)  // _STA: Status");
+    dsdt_line("        {");
+    dsdt_line("            Return (0x0F)");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_SRS, 1, Serialized)  // _SRS: Set Resource Settings");
+    dsdt_line("        {");
+    dsdt_line("            CDIS = Zero");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device");
+    dsdt_line("        {");
+    dsdt_line("            CDIS = One");
+    dsdt_line("        }");
+    dsdt_line("    }");
+    dsdt_line("}	");
+}
+
+
+static void acpi_add_rt5640_1(struct pci_vdev *dev, int i2c_bus)
+{
+	dsdt_line("Scope(I2C%d)", i2c_bus);
+    dsdt_line("{");
+    dsdt_line("    Device (HDA1)");
+    dsdt_line("    {");
+    dsdt_line("        Name (_HID, \"10EC5640\" /* Realtek I2S Audio Codec */)  // _HID: Hardware ID");
+    dsdt_line("        Name (_CID, \"10EC5640\" /* Realtek I2S Audio Codec */)  // _CID: Compatible ID");
+    dsdt_line("        Name (_DDN, \"ALC5642\")  // _DDN: DOS Device Name");
+    dsdt_line("        Name (_UID, 0x2)  // _UID: Unique ID");
+    dsdt_line("        Name (CADR, 0x1C)");
+    dsdt_line("        Name (CDIS, Zero)");
+    dsdt_line("        Method (_INI, 0, NotSerialized)  // _INI: Initialize");
+    dsdt_line("        {");
+    dsdt_line("            _HID = \"10EC5640\"");
+    dsdt_line("            _CID = \"10EC5640\"");
+    dsdt_line("            CADR = 0x1C");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_CRS, 0, NotSerialized)  // _CRS: Current Resource Settings");
+    dsdt_line("        {");
+	dsdt_line("            Name (IIC0, ResourceTemplate ()");
+	dsdt_line("            {");
+	dsdt_line("                I2cSerialBusV2 (0x001C, ControllerInitiated, 0x00061A80,");
+	dsdt_line("                AddressingMode7Bit, \"\\\\_SB.PCI%d.I2C%d\",", dev->bus, i2c_bus);
+	dsdt_line("                0x00, ResourceConsumer, , Exclusive,");
+	dsdt_line("                )");
+	dsdt_line("            })");
+	dsdt_line("            Return (IIC0)");	
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_STA, 0, NotSerialized)  // _STA: Status");
+    dsdt_line("        {");
+    dsdt_line("            Return (0x0F)");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_SRS, 1, Serialized)  // _SRS: Set Resource Settings");
+    dsdt_line("        {");
+    dsdt_line("            CDIS = Zero");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device");
+    dsdt_line("        {");
+    dsdt_line("            CDIS = One");
+    dsdt_line("        }");
+    dsdt_line("    }");
+    dsdt_line("}	");
+}
+
+static void acpi_add_rt5640_2(struct pci_vdev *dev, int i2c_bus)
+{
+	dsdt_line("Scope(I2C%d)", i2c_bus);
+    dsdt_line("{");
+    dsdt_line("    Device (HDA2)");
+    dsdt_line("    {");
+    dsdt_line("        Name (_HID, \"10EC5640\" /* Realtek I2S Audio Codec */)  // _HID: Hardware ID");
+    dsdt_line("        Name (_CID, \"10EC5640\" /* Realtek I2S Audio Codec */)  // _CID: Compatible ID");
+    dsdt_line("        Name (_DDN, \"ALC5642\")  // _DDN: DOS Device Name");
+    dsdt_line("        Name (_UID, 0x3)  // _UID: Unique ID");
+    dsdt_line("        Name (CADR, 0x1C)");
+    dsdt_line("        Name (CDIS, Zero)");
+    dsdt_line("        Method (_INI, 0, NotSerialized)  // _INI: Initialize");
+    dsdt_line("        {");
+    dsdt_line("            _HID = \"10EC5640\"");
+    dsdt_line("            _CID = \"10EC5640\"");
+    dsdt_line("            CADR = 0x1C");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_CRS, 0, NotSerialized)  // _CRS: Current Resource Settings");
+    dsdt_line("        {");
+	dsdt_line("            Name (IIC0, ResourceTemplate ()");
+	dsdt_line("            {");
+	dsdt_line("                I2cSerialBusV2 (0x001C, ControllerInitiated, 0x00061A80,");
+	dsdt_line("                AddressingMode7Bit, \"\\\\_SB.PCI%d.I2C%d\",", dev->bus, i2c_bus);
+	dsdt_line("                0x00, ResourceConsumer, , Exclusive,");
+	dsdt_line("                )");
+	dsdt_line("            })");
+	dsdt_line("            Return (IIC0)");	
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_STA, 0, NotSerialized)  // _STA: Status");
+    dsdt_line("        {");
+    dsdt_line("            Return (0x0F)");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_SRS, 1, Serialized)  // _SRS: Set Resource Settings");
+    dsdt_line("        {");
+    dsdt_line("            CDIS = Zero");
+    dsdt_line("        }");
+	dsdt_line("");
+    dsdt_line("        Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device");
+    dsdt_line("        {");
+    dsdt_line("            CDIS = One");
+    dsdt_line("        }");
+    dsdt_line("    }");
+    dsdt_line("}	");
 }
 
 static void

@@ -1078,7 +1078,7 @@ static struct {
 	{ basl_fwrite_hpet, HPET_OFFSET, true  },
 	{ basl_fwrite_mcfg, MCFG_OFFSET, true  },
 	{ basl_fwrite_facs, FACS_OFFSET, true  },
-	{ basl_fwrite_nhlt, NHLT_OFFSET, false }, /*valid with audio ptdev*/
+	{ basl_fwrite_nhlt, NHLT_OFFSET, true }, /*valid with audio ptdev*/
 	{ basl_fwrite_tpm2, TPM2_OFFSET, false },
 	{ basl_fwrite_dsdt, DSDT_OFFSET, true  }
 };
