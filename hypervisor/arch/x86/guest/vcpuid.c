@@ -116,7 +116,11 @@ static void init_vcpuid_entry(uint32_t leaf, uint32_t subleaf,
 
 	switch (leaf) {
 
-
+       case 0x06U:
+               cpuid_subleaf(leaf, subleaf, &entry->eax, &entry->ebx, &entry->ecx, &entry->edx);
+               //entry->eax &= ~(CPUID_EAX_HWP | CPUID_EAX_HWP_N | CPUID_EAX_HWP_AW | CPUID_EAX_HWP_EPP | CPUID_EAX_HWP_PLR);
+               //entry->ecx &= ~CPUID_ECX_HCFC;
+               break;
 
 	case 0x07U:
 		if (subleaf == 0U) {
