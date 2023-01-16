@@ -722,7 +722,7 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	{
 		v = vcpu_get_guest_msr(vcpu, MSR_IA32_MISC_ENABLE);
 		/* As CPUID.01H:ECX[7] is removed from guests, guests should not see EIST enable bit. */
-		v &= ~MSR_IA32_MISC_ENABLE_EIST;
+		//v &= ~MSR_IA32_MISC_ENABLE_EIST;
 		break;
 	}
 	case MSR_IA32_SGXLEPUBKEYHASH0:
