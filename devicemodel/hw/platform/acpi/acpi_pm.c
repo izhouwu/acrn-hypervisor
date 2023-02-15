@@ -316,6 +316,43 @@ static int dsdt_write_pss(struct vmctx *ctx, int vcpu_id)
 	return 0;
 }
 
+/* _CPC: Continuous Performance Control
+ * Hard code a V3 CPC table, describing HWP register interface.
+ */
+static void dsdt_write_cpc(void)
+{
+	dsdt_line("");
+	dsdt_line("    Method (_CPC, 0, NotSerialized)");
+	dsdt_line("    {");
+	dsdt_line("        Return (Package (0x17)");
+	dsdt_line("        {");
+	dsdt_line("            0x17,");
+	dsdt_line("            0x03,");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x00, 0x0000000000000771, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x08, 0x00000000000000CE, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x10, 0x0000000000000771, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x18, 0x0000000000000771, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x08, 0x0000000000000771, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x10, 0x0000000000000774, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x00, 0x0000000000000774, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x08, 0x0000000000000774, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(SystemMemory, 0x00, 0x00, 0x0000000000000000, , )},");
+	dsdt_line("            ResourceTemplate() {Register(SystemMemory, 0x00, 0x00, 0x0000000000000000, , )},");
+	dsdt_line("            ResourceTemplate() {Register(SystemMemory, 0x00, 0x00, 0x0000000000000000, , )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x40, 0x00, 0x00000000000000E7, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x40, 0x00, 0x00000000000000E8, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x02, 0x01, 0x0000000000000777, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x01, 0x00, 0x0000000000000770, 0x04, )},");
+	dsdt_line("            One,");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x0A, 0x20, 0x0000000000000774, 0x04, )},");
+	dsdt_line("            ResourceTemplate() {Register(FFixedHW, 0x08, 0x18, 0x0000000000000774, 0x04, )},");
+	dsdt_line("            Zero,");
+	dsdt_line("            Zero,");
+	dsdt_line("            Zero");
+	dsdt_line("        })");
+	dsdt_line("    }");
+}
+
 void pm_write_dsdt(struct vmctx *ctx, int ncpu)
 {
 	int i;
@@ -364,6 +401,15 @@ void pm_write_dsdt(struct vmctx *ctx, int ncpu)
 			}
 		}
 
+		if (i == 0) {
+			dsdt_write_cpc();
+		} else {
+			dsdt_line("    Method (_CPC, 0, NotSerialized)");
+			dsdt_line("    {");
+			dsdt_line("      Return (^^PR00._CPC)");
+			dsdt_line("    }");
+			dsdt_line("");
+		}
 		dsdt_line("  }");
 	}
 }
