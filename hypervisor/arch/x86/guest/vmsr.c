@@ -77,6 +77,14 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 
 	MSR_TEST_CTL,
 
+	MSR_IA32_PM_ENABLE,
+	MSR_IA32_HWP_CAPABILITIES,
+	MSR_IA32_HWP_REQUEST,
+	MSR_IA32_HWP_STATUS,
+	MSR_IA32_HWP_INTERRUPT,
+	MSR_IA32_MPERF,
+	MSR_IA32_APERF,
+
 	/* VMX: CPUID.01H.ECX[5] */
 #ifdef CONFIG_NVMX_ENABLED
 	LIST_OF_VMX_MSRS,
@@ -258,28 +266,13 @@ static const uint32_t unsupported_msrs[] = {
 	MSR_IA32_PL3_SSP,
 	MSR_IA32_INTERRUPT_SSP_TABLE_ADDR,
 
-	/* HWP disabled:
-	 * CPUID.06H.EAX[7]
-	 * CPUID.06H.EAX[9]
-	 * CPUID.06H:EAX[10]
-	 */
-	MSR_IA32_PM_ENABLE,
-	MSR_IA32_HWP_CAPABILITIES,
-	MSR_IA32_HWP_REQUEST,
-	MSR_IA32_HWP_STATUS,
-	/* HWP_Notification disabled:
-	 * CPUID.06H:EAX[8]
-	 */
-	MSR_IA32_HWP_INTERRUPT,
-	/* HWP_package_level disabled:
-	 * CPUID.06H:EAX[11]
+	/*
+	 * HWP package ctrl disabled:
+	 * CPUID.06H.EAX[11] (MSR_IA32_HWP_REQUEST_PKG)
+	 * CPUID.06H.EAX[22] (MSR_IA32_HWP_CTL)
 	 */
 	MSR_IA32_HWP_REQUEST_PKG,
-	/* Hardware Coordination Feedback Capability disabled:
-	 * CPUID.06H:ECX[0]
-	 */
-	MSR_IA32_MPERF,
-	MSR_IA32_APERF,
+	MSR_IA32_HWP_CTL,
 };
 
 /* emulated_guest_msrs[] shares same indexes with array vcpu->arch->guest_msrs[] */
@@ -613,6 +606,7 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	int32_t err = 0;
 	uint32_t msr;
 	uint64_t v = 0UL;
+	struct acrn_vm_config *vm_config = get_vm_config(vcpu->vm->vm_id);
 
 	/* Read the msr value */
 	msr = (uint32_t)vcpu_get_gpreg(vcpu, CPU_REG_RCX);
@@ -670,12 +664,31 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_PERF_STATUS:
 	{
-		v = get_perf_status();
+		if (vm_config->guest_flags & GUEST_FLAG_VHWP) {
+			v = msr_read(msr);
+		} else {
+			v = get_perf_status();
+		}
 		break;
 	}
 	case MSR_IA32_PERF_CTL:
 	{
 		v = vcpu_get_guest_msr(vcpu, MSR_IA32_PERF_CTL);
+		break;
+	}
+	case MSR_IA32_PM_ENABLE:
+	case MSR_IA32_HWP_CAPABILITIES:
+	case MSR_IA32_HWP_REQUEST:
+	case MSR_IA32_HWP_STATUS:
+	case MSR_IA32_HWP_INTERRUPT:
+	case MSR_IA32_MPERF:
+	case MSR_IA32_APERF:
+	{
+		if (vm_config->guest_flags & GUEST_FLAG_VHWP) {
+			v = msr_read(msr);
+		} else {
+			vcpu_inject_gp(vcpu, 0U);
+		}
 		break;
 	}
 	case MSR_IA32_PAT:
@@ -965,6 +978,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	int32_t err = 0;
 	uint32_t msr;
 	uint64_t v;
+	struct acrn_vm_config *vm_config = get_vm_config(vcpu->vm->vm_id);
 
 	/* Read the MSR ID */
 	msr = (uint32_t)vcpu_get_gpreg(vcpu, CPU_REG_RCX);
@@ -1042,6 +1056,21 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	case MSR_IA32_PERF_CTL:
 	{
 		vcpu_set_guest_msr(vcpu, MSR_IA32_PERF_CTL, v);
+		break;
+	}
+	case MSR_IA32_PM_ENABLE:
+	case MSR_IA32_HWP_CAPABILITIES:
+	case MSR_IA32_HWP_REQUEST:
+	case MSR_IA32_HWP_STATUS:
+	case MSR_IA32_HWP_INTERRUPT:
+	case MSR_IA32_MPERF:
+	case MSR_IA32_APERF:
+	{
+		if ((vm_config->guest_flags & GUEST_FLAG_VHWP)) {
+			msr_write(msr, v);
+		} else {
+			vcpu_inject_gp(vcpu, 0U);
+		}
 		break;
 	}
 	case MSR_IA32_PAT:
