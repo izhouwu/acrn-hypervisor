@@ -262,6 +262,9 @@ static int dsdt_write_pss(struct vmctx *ctx, int vcpu_id)
 	int ret;
 
 	ret = get_vcpu_px_cnt(ctx, vcpu_id, &vcpu_px_cnt);
+	/* vcpu_px_cnt = 0 Indicates vcpu supports continuous pstate.
+	 * Then we should write _CPC instate of _PSS
+	 */
 	if (ret || !vcpu_px_cnt) {
 		return -1;
 	}
@@ -406,6 +409,9 @@ void pm_write_dsdt(struct vmctx *ctx, int ncpu)
 
 		ret = get_vcpu_px_cnt(ctx, i, &px_cnt);
 		if (ret == 0 && px_cnt == 0) {
+			/* px_cnt = 0 Indicates vcpu supports continuous pstate.
+			 * Then we can write _CPC
+			 */
 			is_cpc = true;
 		}
 
