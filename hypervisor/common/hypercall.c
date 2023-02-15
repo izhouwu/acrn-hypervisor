@@ -1084,8 +1084,13 @@ int32_t hcall_reset_ptdev_intr_info(struct acrn_vcpu *vcpu, struct acrn_vm *targ
 
 static bool is_pt_pstate(__unused const struct acrn_vm *vm)
 {
-	/* Currently VM's CPU frequency is managed in hypervisor. So no pass through for all VMs. */
-	return false;
+	struct acrn_vm_config *vm_config = get_vm_config(vm->vm_id);
+	/* For VM owning pCPU exclucively, passthrough psate to it. Otherwise CPU frequency is managed in hypervisor.*/
+	if (vm_config->guest_flags & GUEST_FLAG_VM_OWN_PCPU) {
+		return true;
+	} else {
+		return false;
+	}
 }
 
 /**
