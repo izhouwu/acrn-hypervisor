@@ -184,9 +184,7 @@ vm_create(const char *name, uint64_t req_buf, int *vcpu_num)
 
 	if (lapic_pt) {
 		create_vm.vm_flag |= GUEST_FLAG_LAPIC_PASSTHROUGH;
-		create_vm.vm_flag |= GUEST_FLAG_RT;
 		create_vm.vm_flag |= GUEST_FLAG_IO_COMPLETION_POLLING;
-		create_vm.vm_flag |= GUEST_FLAG_PMU_PASSTHROUGH;
 	} else {
 		create_vm.vm_flag &= (~GUEST_FLAG_LAPIC_PASSTHROUGH);
 		create_vm.vm_flag &= (~GUEST_FLAG_IO_COMPLETION_POLLING);
@@ -197,6 +195,7 @@ vm_create(const char *name, uint64_t req_buf, int *vcpu_num)
 	strncpy((char *)create_vm.name, name, strnlen(name, MAX_VM_NAME_LEN));
 
 	if (is_rtvm) {
+		create_vm.vm_flag |= GUEST_FLAG_PMU_PASSTHROUGH;
 		create_vm.vm_flag |= GUEST_FLAG_RT;
 		create_vm.vm_flag |= GUEST_FLAG_IO_COMPLETION_POLLING;
 	}

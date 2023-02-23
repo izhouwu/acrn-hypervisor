@@ -224,11 +224,11 @@ int32_t hcall_create_vm(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint6
 				}
 
 				/*
-				 * GUEST_FLAG_RT must be set if we have GUEST_FLAG_LAPIC_PASSTHROUGH
+				 * GUEST_FLAG_LAPIC_PASSTHROUGH must be set if we have GUEST_FLAG_RT
 				 * set in guest_flags
 				 */
-				if (((vm_config->guest_flags & GUEST_FLAG_LAPIC_PASSTHROUGH) != 0UL)
-						&& ((vm_config->guest_flags & GUEST_FLAG_RT) == 0UL)) {
+				if (((vm_config->guest_flags & GUEST_FLAG_RT) != 0UL)
+						&& ((vm_config->guest_flags & GUEST_FLAG_LAPIC_PASSTHROUGH) == 0UL)) {
 					pr_err("Wrong guest flags 0x%lx\n", vm_config->guest_flags);
 				} else {
 					if (create_vm(vmid, pcpu_bitmap, vm_config, &tgt_vm) == 0) {
