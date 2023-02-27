@@ -547,9 +547,11 @@ int32_t set_vcpuid_entries(struct acrn_vm *vm)
 				init_vcpuid_entry(i, 0U, CPUID_CHECK_SUBLEAF, &entry);
 				/* For VM not owning pCPU, HWP and HCFC are hided. */
 				if (!(vm_config->guest_flags & GUEST_FLAG_VM_OWN_PCPU)) {
-					entry.eax &= ~(CPUID_EAX_HWP | CPUID_EAX_HWP_N | CPUID_EAX_HWP_AW | CPUID_EAX_HWP_EPP | CPUID_EAX_HWP_PLR);
+					entry.eax &= ~(CPUID_EAX_HWP | CPUID_EAX_HWP_N | CPUID_EAX_HWP_AW | CPUID_EAX_HWP_EPP);
 					entry.ecx &= ~CPUID_ECX_HCFC;
 				}
+				/* Always hide package level HWP control*/
+				entry.eax &= ~(CPUID_EAX_HWP_CTL | CPUID_EAX_HWP_PLR);
 				result = set_vcpuid_entry(vm, &entry);
 				break;
 			case 0x07U:

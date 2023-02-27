@@ -82,7 +82,6 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 	MSR_IA32_HWP_REQUEST,
 	MSR_IA32_HWP_STATUS,
 	MSR_IA32_HWP_INTERRUPT,
-	MSR_IA32_HWP_REQUEST_PKG,
 	MSR_IA32_MPERF,
 	MSR_IA32_APERF,
 
@@ -267,6 +266,14 @@ static const uint32_t unsupported_msrs[] = {
 	MSR_IA32_PL3_SSP,
 	MSR_IA32_INTERRUPT_SSP_TABLE_ADDR,
 
+	/*
+	 * HWP package ctrl disabled:
+	 * CPUID.06H.ECX[]
+	 * [11]MSR_IA32_HWP_REQUEST_PKG
+	 * [22]MSR_IA32_HWP_CTL
+	 */
+	MSR_IA32_HWP_REQUEST_PKG,
+	MSR_IA32_HWP_CTL,
 };
 
 /* emulated_guest_msrs[] shares same indexes with array vcpu->arch->guest_msrs[] */
@@ -683,7 +690,6 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	case MSR_IA32_HWP_REQUEST:
 	case MSR_IA32_HWP_STATUS:
 	case MSR_IA32_HWP_INTERRUPT:
-	case MSR_IA32_HWP_REQUEST_PKG:
 	case MSR_IA32_MPERF:
 	case MSR_IA32_APERF:
 	{
@@ -1077,7 +1083,6 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	case MSR_IA32_HWP_REQUEST:
 	case MSR_IA32_HWP_STATUS:
 	case MSR_IA32_HWP_INTERRUPT:
-	case MSR_IA32_HWP_REQUEST_PKG:
 	case MSR_IA32_MPERF:
 	case MSR_IA32_APERF:
 	{
