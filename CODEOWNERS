@@ -10,21 +10,9 @@
 # Additional reviewers can be assigned manually
 
 # Default/global reviewers (if not overridden later)
-*                                        @dongyaozu @NanlinXie
-
-Makefile                                 @terryzouhao @NanlinXie
-/hypervisor/                             @dongyaozu @lifeix
-/devicemodel/                            @ywan170
-/doc/                                    @dbkinder @NanlinXie
-/misc/debug_tools/acrn_crashlog/         @ywan170 @lifeix
-/misc/debug_tools/acrn_log/              @ywan170 @lifeix
-/misc/debug_tools/acrn_trace/            @ywan170 @lifeix
-/misc/services/acrn_manager/             @ywan170 @lifeix
-/misc/services/acrn_bridge/              @ywan170 @lifeix
-/misc/services/life_mngr/                @ywan170 @lifeix
-/misc/config_tools/                      @terryzouhao @NanlinXie
-/misc/Makefile                           @terryzouhao @NanlinXie
-/misc/packaging/                         @terryzouhao @NanlinXie
-/misc/hv_prebuild/                       @terryzouhao @NanlinXie
-
-*.rst                                    @dbkinder @NanlinXie
+*                                        @ywan170 @NanlinXie
+/hypervisor/                             @dongyaozu @lifeix @junjiemao1
+/devicemodel/                            @ywan170 @chejianj
+/doc/                                    @NanlinXie @qianouyang
+/misc/                                   @jsun26intel @NanlinXie
+*.rst                                    @NanlinXie @qianouyang
