@@ -414,8 +414,9 @@ static void remove_intx_remapping(const struct acrn_vm *vm, uint32_t gsi, enum i
 	if (is_phy_gsi) {
 		DEFINE_INTX_SID(sid, gsi, INTX_CTLR_IOAPIC);
 		entry = find_ptirq_entry(PTDEV_INTR_INTX, &sid, 0);
-		if (entry->vm != vm)
+		if ((entry != NULL) && (entry->vm != vm)) {
 			entry = NULL;
+		}
 	} else {
 		DEFINE_INTX_SID(sid, gsi, gsi_ctlr);
 		entry = find_ptirq_entry(PTDEV_INTR_INTX, &sid, vm);
