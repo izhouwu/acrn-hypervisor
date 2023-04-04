@@ -503,7 +503,6 @@ int32_t set_vcpuid_entries(struct acrn_vm *vm)
 	uint32_t limit;
 	uint32_t i, j;
 	struct cpuinfo_x86 *cpu_info = get_pcpu_info();
-	struct acrn_vm_config *vm_config = get_vm_config(vm->vm_id);
 
 	init_vcpuid_entry(0U, 0U, 0U, &entry);
 	if (cpu_info->cpuid_level < 0x16U) {
@@ -546,12 +545,12 @@ int32_t set_vcpuid_entries(struct acrn_vm *vm)
 			case 0x06U:
 				init_vcpuid_entry(i, 0U, CPUID_CHECK_SUBLEAF, &entry);
 				/* For VM not owning pCPU, HWP and HCFC are always hidden. */
-				if (!(vm_config->guest_flags & GUEST_FLAG_VHWP)) {
-					entry.eax &= ~(CPUID_EAX_HWP | CPUID_EAX_HWP_N | CPUID_EAX_HWP_AW | CPUID_EAX_HWP_EPP);
+				if (!is_vhwp_configured(vm)) {
+					entry.eax &= ~(CPUID_EAX_HWP | CPUID_EAX_HWP_AW | CPUID_EAX_HWP_EPP);
 					entry.ecx &= ~CPUID_ECX_HCFC;
 				}
-				/* Always hide package level HWP control*/
-				entry.eax &= ~(CPUID_EAX_HWP_CTL | CPUID_EAX_HWP_PLR);
+				/* Always hide package level HWP controls and HWP interrupt*/
+				entry.eax &= ~(CPUID_EAX_HWP_CTL | CPUID_EAX_HWP_PLR | CPUID_EAX_HWP_N);
 				result = set_vcpuid_entry(vm, &entry);
 				break;
 			case 0x07U:
@@ -644,6 +643,7 @@ static void guest_cpuid_01h(struct acrn_vcpu *vcpu, uint32_t *eax, uint32_t *ebx
 	*ecx &= ~CPUID_ECX_SMX;
 
 	*ecx &= ~CPUID_ECX_EST;
+
 
 	/* mask SDBG for silicon debug */
 	*ecx &= ~CPUID_ECX_SDBG;

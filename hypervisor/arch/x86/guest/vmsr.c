@@ -81,7 +81,6 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 	MSR_IA32_HWP_CAPABILITIES,
 	MSR_IA32_HWP_REQUEST,
 	MSR_IA32_HWP_STATUS,
-	MSR_IA32_HWP_INTERRUPT,
 	MSR_IA32_MPERF,
 	MSR_IA32_APERF,
 
@@ -273,6 +272,12 @@ static const uint32_t unsupported_msrs[] = {
 	 */
 	MSR_IA32_HWP_REQUEST_PKG,
 	MSR_IA32_HWP_CTL,
+
+	/*
+	 * HWP interrupt disabled:
+	 * CPUID.06H.EAX[8]
+	 */
+	MSR_IA32_HWP_INTERRUPT,
 };
 
 /* emulated_guest_msrs[] shares same indexes with array vcpu->arch->guest_msrs[] */
@@ -606,7 +611,6 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	int32_t err = 0;
 	uint32_t msr;
 	uint64_t v = 0UL;
-	struct acrn_vm_config *vm_config = get_vm_config(vcpu->vm->vm_id);
 
 	/* Read the msr value */
 	msr = (uint32_t)vcpu_get_gpreg(vcpu, CPU_REG_RCX);
@@ -664,7 +668,7 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_PERF_STATUS:
 	{
-		if (vm_config->guest_flags & GUEST_FLAG_VHWP) {
+		if (is_vhwp_configured(vcpu->vm)) {
 			v = msr_read(msr);
 		} else {
 			v = get_perf_status();
@@ -680,11 +684,10 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	case MSR_IA32_HWP_CAPABILITIES:
 	case MSR_IA32_HWP_REQUEST:
 	case MSR_IA32_HWP_STATUS:
-	case MSR_IA32_HWP_INTERRUPT:
 	case MSR_IA32_MPERF:
 	case MSR_IA32_APERF:
 	{
-		if (vm_config->guest_flags & GUEST_FLAG_VHWP) {
+		if (is_vhwp_configured(vcpu->vm)) {
 			v = msr_read(msr);
 		} else {
 			vcpu_inject_gp(vcpu, 0U);
@@ -978,7 +981,6 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	int32_t err = 0;
 	uint32_t msr;
 	uint64_t v;
-	struct acrn_vm_config *vm_config = get_vm_config(vcpu->vm->vm_id);
 
 	/* Read the MSR ID */
 	msr = (uint32_t)vcpu_get_gpreg(vcpu, CPU_REG_RCX);
@@ -1059,14 +1061,40 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		break;
 	}
 	case MSR_IA32_PM_ENABLE:
+	{
+		if (!is_vhwp_configured(vcpu->vm)) {
+			vcpu_inject_gp(vcpu, 0U);
+		}
+		/* Set by HV. Writing from guests will have no effect */
+		break;
+	}
 	case MSR_IA32_HWP_CAPABILITIES:
+	{
+		/* RO */
+		break;
+	}
 	case MSR_IA32_HWP_REQUEST:
+	{
+		if (is_vhwp_configured(vcpu->vm)) {
+			msr_write(msr, (v & (~MSR_IA32_HWP_REQUEST_RSV_BITS)) & (~MSR_IA32_HWP_REQUEST_PC));
+		} else {
+			vcpu_inject_gp(vcpu, 0U);
+		}
+		break;
+	}
 	case MSR_IA32_HWP_STATUS:
-	case MSR_IA32_HWP_INTERRUPT:
+	{
+		if (is_vhwp_configured(vcpu->vm)) {
+			msr_write(msr, v & (~MSR_IA32_HWP_STATUS_RSV_BITS));
+		} else {
+			vcpu_inject_gp(vcpu, 0U);
+		}
+		break;
+	}
 	case MSR_IA32_MPERF:
 	case MSR_IA32_APERF:
 	{
-		if ((vm_config->guest_flags & GUEST_FLAG_VHWP)) {
+		if (is_vhwp_configured(vcpu->vm)) {
 			msr_write(msr, v);
 		} else {
 			vcpu_inject_gp(vcpu, 0U);
