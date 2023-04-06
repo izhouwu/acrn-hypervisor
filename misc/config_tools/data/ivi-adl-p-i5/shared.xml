@@ -61,6 +61,7 @@
   </vm>
   <vm id="1">
     <vm_type>STANDARD_VM</vm_type>
+    <console_vuart>COM Port 1</console_vuart>
     <os_type>Non-Windows OS</os_type>
     <vuart0>n</vuart0>
     <vbootloader>y</vbootloader>
