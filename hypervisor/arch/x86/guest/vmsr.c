@@ -1064,6 +1064,11 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	}
 	case MSR_IA32_PERF_STATUS:
 	{
+		/*
+		 * If vhwp is configured, PM_ENABLE will be set to 1.
+		 * If not, then EIST is not enabled.
+		 * Ether way, writing to perf_ctl/status would have no effect.
+		 */
 		break;
 	}
 	case MSR_IA32_PERF_CTL:

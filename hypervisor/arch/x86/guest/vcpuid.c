@@ -644,7 +644,9 @@ static void guest_cpuid_01h(struct acrn_vcpu *vcpu, uint32_t *eax, uint32_t *ebx
 	/* mask Safer Mode Extension */
 	*ecx &= ~CPUID_ECX_SMX;
 
-	*ecx &= ~CPUID_ECX_EST;
+	if (!is_vhwp_configured(vcpu->vm)) {
+		*ecx &= ~CPUID_ECX_EST;
+	}
 
 	*edx &= ~(CPUID_EDX_ACPI | CPUID_EDX_TM1);
 	*ecx &= ~CPUID_ECX_TM2;

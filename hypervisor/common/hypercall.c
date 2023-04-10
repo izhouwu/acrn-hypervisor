@@ -1082,10 +1082,9 @@ int32_t hcall_reset_ptdev_intr_info(struct acrn_vcpu *vcpu, struct acrn_vm *targ
 	return ret;
 }
 
-static bool is_pt_pstate(__unused const struct acrn_vm *vm)
+static bool is_pt_pstate(const struct acrn_vm *vm)
 {
-	/* Currently VM's CPU frequency is managed in hypervisor. So no pass through for all VMs. */
-	return false;
+	return is_vhwp_configured(vm);
 }
 
 /**

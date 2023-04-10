@@ -387,6 +387,7 @@ void pm_write_dsdt(struct vmctx *ctx, int ncpu)
 			if (i == 0) {
 				dsdt_write_ppc();
 				dsdt_write_pct();
+				dsdt_write_cpc();
 			} else {
 				dsdt_line("    Method (_PPC, 0, NotSerialized)");
 				dsdt_line("    {");
@@ -398,17 +399,12 @@ void pm_write_dsdt(struct vmctx *ctx, int ncpu)
 				dsdt_line("      Return (^^PR00._PCT)");
 				dsdt_line("    }");
 				dsdt_line("");
+				dsdt_line("    Method (_CPC, 0, NotSerialized)");
+				dsdt_line("    {");
+				dsdt_line("      Return (^^PR00._CPC)");
+				dsdt_line("    }");
+				dsdt_line("");
 			}
-		}
-
-		if (i == 0) {
-			dsdt_write_cpc();
-		} else {
-			dsdt_line("    Method (_CPC, 0, NotSerialized)");
-			dsdt_line("    {");
-			dsdt_line("      Return (^^PR00._CPC)");
-			dsdt_line("    }");
-			dsdt_line("");
 		}
 		dsdt_line("  }");
 	}

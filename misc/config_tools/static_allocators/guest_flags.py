@@ -26,7 +26,6 @@ policies = [
     GuestFlagPolicy(".//vm_type = 'RTVM' and .//load_order = 'PRE_LAUNCHED_VM' and //hv/BUILD_TYPE= 'debug'", "GUEST_FLAG_PMU_PASSTHROUGH"),
     GuestFlagPolicy(".//vm_type = 'TEE_VM'", "GUEST_FLAG_TEE"),
     GuestFlagPolicy(".//vm_type = 'REE_VM'", "GUEST_FLAG_REE"),
-    GuestFlagPolicy(".//own_pcpu = 'y'", "GUEST_FLAG_VHWP"),
 ]
 
 def fn(board_etree, scenario_etree, allocation_etree):
@@ -39,3 +38,5 @@ def fn(board_etree, scenario_etree, allocation_etree):
             if vm_node.xpath(policy.condition):
                 acrn_config_utilities.append_node("./guest_flags/guest_flag", str(policy.guest_flag), allocation_vm_node)
         acrn_config_utilities.append_node("./guest_flags/guest_flag",'GUEST_FLAG_STATIC_VM', allocation_vm_node)
+        if board_etree.xpath("//capability[@id = 'hwp_supported']") and vm_node.xpath(".//own_pcpu = 'y'"):
+            acrn_config_utilities.append_node("./guest_flags/guest_flag", 'GUEST_FLAG_VHWP', allocation_vm_node)
