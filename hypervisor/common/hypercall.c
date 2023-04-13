@@ -1082,10 +1082,9 @@ int32_t hcall_reset_ptdev_intr_info(struct acrn_vcpu *vcpu, struct acrn_vm *targ
 	return ret;
 }
 
-static bool is_pt_pstate(__unused const struct acrn_vm *vm)
+static bool is_pt_pstate(const struct acrn_vm *vm)
 {
-	/* Currently VM's CPU frequency is managed in hypervisor. So no pass through for all VMs. */
-	return false;
+	return is_vhwp_configured(vm);
 }
 
 /**
@@ -1160,6 +1159,11 @@ int32_t hcall_get_cpu_pm_state(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm
 
 			cx_data = target_vm->pm.cx_data + cx_idx;
 			ret = copy_to_gpa(vm, cx_data, param2, sizeof(struct acrn_cstate_data));
+			break;
+		}
+		case ACRN_PMCMD_GET_CPC_ENABLED: {
+			bool is_cpc = is_vhwp_configured(target_vm);
+			ret = copy_to_gpa(vm, &is_cpc, param2, sizeof(bool));
 			break;
 		}
 		default:
