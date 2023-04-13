@@ -7,9 +7,9 @@ set -e
 
 #Build info Start
 
-SCENARIO=(shared)
+SCENARIO=(virtualization.hypervisors.acrn.acrn-automotive.acrn-hypervisor)
 
-BOARD=(nuc11tnbi5)
+BOARD=(rpl-p-ivi)
 
 #Build info End
 
