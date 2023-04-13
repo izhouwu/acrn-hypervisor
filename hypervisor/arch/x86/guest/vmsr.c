@@ -703,7 +703,7 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		if (is_vhwp_configured(vcpu->vm)) {
 			v = msr_read(msr);
 		} else {
-			vcpu_inject_gp(vcpu, 0U);
+			err = -EACCES;
 		}
 		break;
 	}
@@ -1091,7 +1091,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 	case MSR_IA32_PM_ENABLE:
 	{
 		if (!is_vhwp_configured(vcpu->vm)) {
-			vcpu_inject_gp(vcpu, 0U);
+			err = -EACCES;
 		}
 		/* Set by HV. Writing from guests will have no effect */
 		break;
@@ -1107,7 +1107,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 			((v & (MSR_IA32_HWP_REQUEST_RSV_BITS | MSR_IA32_HWP_REQUEST_PKG_CTL)) == 0)) {
 			msr_write(msr, v);
 		} else {
-			vcpu_inject_gp(vcpu, 0U);
+			err = -EACCES;
 		}
 		break;
 	}
@@ -1116,7 +1116,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		if (is_vhwp_configured(vcpu->vm) && ((v & MSR_IA32_HWP_STATUS_RSV_BITS) == 0)) {
 			msr_write(msr, v);
 		} else {
-			vcpu_inject_gp(vcpu, 0U);
+			err = -EACCES;
 		}
 		break;
 	}
@@ -1126,7 +1126,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		if (is_vhwp_configured(vcpu->vm)) {
 			msr_write(msr, v);
 		} else {
-			vcpu_inject_gp(vcpu, 0U);
+			err = -EACCES;
 		}
 		break;
 	}
