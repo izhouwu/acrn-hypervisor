@@ -77,6 +77,8 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 
 	MSR_TEST_CTL,
 
+	MSR_PLATFORM_INFO,
+
 	MSR_IA32_PM_ENABLE,
 	MSR_IA32_HWP_CAPABILITIES,
 	MSR_IA32_HWP_REQUEST,
@@ -794,6 +796,19 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 			v = vcpu_get_guest_msr(vcpu, MSR_TEST_CTL);
 		} else {
 			vcpu_inject_gp(vcpu, 0U);
+		}
+		break;
+	}
+	case MSR_PLATFORM_INFO:
+	{
+		if (is_service_vm(vcpu->vm)) {
+			v = msr_read(msr);
+			v &= MSR_PLATFORM_INFO_MAX_NON_TURBO_LIM_RATIO_MASK |
+			     MSR_PLATFORM_INFO_MAX_EFFICIENCY_RATIO_MASK |
+			     MSR_PLATFORM_INFO_MIN_OPERATING_RATIO_MASK |
+			     MSR_PLATFORM_INFO_SAMPLE_PART;
+		} else {
+			err = -EACCES;
 		}
 		break;
 	}
