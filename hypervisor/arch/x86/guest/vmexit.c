@@ -222,6 +222,10 @@ int32_t vmexit_handler(struct acrn_vcpu *vcpu)
 	} else if (is_vcpu_in_l2_guest(vcpu)) {
 		ret = nested_vmexit_handler(vcpu);
 	} else {
+		if (vcpu->arch.emulating_lock == true) {
+			console_putc("X");
+		}
+		
 		/* Obtain interrupt info */
 		vcpu->arch.idt_vectoring_info = exec_vmread32(VMX_IDT_VEC_INFO_FIELD);
 		/* Filter out HW exception & NMI */
@@ -318,9 +322,10 @@ static int32_t mtf_vmexit_handler(struct acrn_vcpu *vcpu)
 {
 	vcpu->arch.proc_vm_exec_ctrls &= ~(VMX_PROCBASED_CTLS_MON_TRAP);
 	exec_vmwrite32(VMX_PROC_VM_EXEC_CONTROLS, vcpu->arch.proc_vm_exec_ctrls);
+	//exec_vmwrite32(VMX_ENTRY_INT_INFO_FIELD, 0U);
 
 	vcpu_retain_rip(vcpu);
-
+	console_putc("m");
 	if (vcpu->arch.emulating_lock) {
 		vcpu->arch.emulating_lock = false;
 		vcpu_complete_lock_instr_emulation(vcpu);

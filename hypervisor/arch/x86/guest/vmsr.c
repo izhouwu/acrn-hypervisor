@@ -1153,7 +1153,7 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		 */
 		if (has_core_cap(CORE_CAP_SPLIT_LOCK) || has_core_cap(CORE_CAP_UC_LOCK)) {
 			vcpu_set_guest_msr(vcpu, MSR_TEST_CTL, v);
-			pr_warn("Ignore writting 0x%llx to MSR_TEST_CTL from VM%d", v, vcpu->vm->vm_id);
+			pr_acrnlog("Ignore writting 0x%llx to MSR_TEST_CTL from VM%d", v, vcpu->vm->vm_id);
 		} else {
 			vcpu_inject_gp(vcpu, 0U);
 		}

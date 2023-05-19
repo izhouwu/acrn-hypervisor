@@ -57,6 +57,10 @@ void vcpu_complete_lock_instr_emulation(struct acrn_vcpu *cur_vcpu)
 	struct acrn_vcpu *other;
 	uint16_t i;
 
+	//pr_acrnlog("end emu");
+	console_putc("e");
+	console_putc("\n");
+
 	if (cur_vcpu->vm->hw.created_vcpus > 1U) {
 		foreach_vcpu(i, cur_vcpu->vm, other) {
 			if ((other != cur_vcpu) && (other->state == VCPU_RUNNING)) {
@@ -71,7 +75,7 @@ void vcpu_complete_lock_instr_emulation(struct acrn_vcpu *cur_vcpu)
 int32_t emulate_lock_instr(struct acrn_vcpu *vcpu, uint32_t exception_vector, bool *queue_exception)
 {
 	int32_t status = 0;
-	uint8_t inst[1];
+	uint8_t inst[8];
 	uint32_t err_code = 0U;
 	uint64_t fault_addr;
 
@@ -88,7 +92,12 @@ int32_t emulate_lock_instr(struct acrn_vcpu *vcpu, uint32_t exception_vector, bo
 		switch (exception_vector) {
 		case IDT_AC:
 		case IDT_GP:
-			status = copy_from_gva(vcpu, inst, vcpu_get_rip(vcpu), 1U, &err_code, &fault_addr);
+//			status = decode_instruction(vcpu, false);
+//			if (status >= 0) {
+//				printf("%d", vcpu->inst_ctxt.vie.op.op_type);
+//			}
+
+			status = copy_from_gva(vcpu, inst, vcpu_get_rip(vcpu), 8U, &err_code, &fault_addr);
 			if (status < 0) {
 				pr_err("Error copy instruction from Guest!");
 				if (status == -EFAULT) {
@@ -98,16 +107,23 @@ int32_t emulate_lock_instr(struct acrn_vcpu *vcpu, uint32_t exception_vector, bo
 					*queue_exception = false;
 				}
 			} else {
+					printf("%lx\n", *(uint64_t*)inst);
+					//printf("%lx`\n", vcpu_get_rip(vcpu));			
 				/*
 				 * If #AC/#GP is caused by instruction with LOCK prefix or xchg, then emulate it,
 				 * otherwise, inject it back.
 				 */
 				if (inst[0] == 0xf0U) {  /* This is LOCK prefix */
+				if (inst[2] != 0x0f) {
+			    	console_putc("f");
+
+
 					/*
 					 * Kick other vcpus of the guest to stop execution
 					 * until the split-lock/uc-lock emulation being completed.
 					 */
 					vcpu_kick_lock_instr_emulation(vcpu);
+			    	//pr_acrnlog("get lock");
 
 					/*
 					 * Skip the LOCK prefix and re-execute the instruction.
@@ -118,18 +134,23 @@ int32_t emulate_lock_instr(struct acrn_vcpu *vcpu, uint32_t exception_vector, bo
 						vcpu->arch.proc_vm_exec_ctrls |= VMX_PROCBASED_CTLS_MON_TRAP;
 						exec_vmwrite32(VMX_PROC_VM_EXEC_CONTROLS, vcpu->arch.proc_vm_exec_ctrls);
 						vcpu->arch.emulating_lock = true;
+						//exec_vmwrite32(VMX_ENTRY_INT_INFO_FIELD, VMX_INT_INFO_VALID | (0x7U << 8U) | (0U & 0xFFU));
 					}
+				}else {					vcpu->arch.inst_len = 0U; }
 
 					/* Skip the #AC/#GP, we have emulated it. */
 					*queue_exception = false;
 				} else {
 					status = decode_instruction(vcpu, false);
 					if (status >= 0) {
+						//pr_acrnlog("op type %d", vcpu->inst_ctxt.vie.op.op_type);
 						/*
 						 * If this is the xchg, then emulate it, otherwise,
 						 * inject it back.
 						 */
 						if (is_current_opcode_xchg(vcpu)) {
+					    	console_putc("x");
+
 							/*
 							 * Kick other vcpus of the guest to stop execution
 							 * until the split-lock/uc-lock emulation being completed.
