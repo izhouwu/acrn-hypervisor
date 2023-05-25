@@ -133,6 +133,11 @@ void vcpu_make_request(struct acrn_vcpu *vcpu, uint16_t eventid)
 	kick_vcpu(vcpu);
 }
 
+void vcpu_clear_pending_request(struct acrn_vcpu *vcpu, uint16_t eventid)
+{
+	bitmap_clear_lock(eventid, &vcpu->arch.pending_req);
+}
+
 /*
  * @retval true when INT is injected to guest.
  * @retval false when otherwise
