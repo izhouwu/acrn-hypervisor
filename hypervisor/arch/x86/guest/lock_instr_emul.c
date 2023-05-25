@@ -40,6 +40,8 @@ void vcpu_kick_lock_instr_emulation(struct acrn_vcpu *cur_vcpu)
 {
 	struct acrn_vcpu *other;
 	uint16_t i;
+	/* current vcpu should not schedule out during lock emulation */
+	disable_reschedule(pcpuid_from_vcpu(cur_vcpu));
 
 	if (cur_vcpu->vm->hw.created_vcpus > 1U) {
 		get_vm_lock(cur_vcpu->vm);
@@ -66,6 +68,8 @@ void vcpu_complete_lock_instr_emulation(struct acrn_vcpu *cur_vcpu)
 
 		put_vm_lock(cur_vcpu->vm);
 	}
+
+	enable_reschedule(pcpuid_from_vcpu(cur_vcpu));
 }
 
 int32_t emulate_lock_instr(struct acrn_vcpu *vcpu, uint32_t exception_vector, bool *queue_exception)

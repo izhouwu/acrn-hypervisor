@@ -11,6 +11,7 @@
 #include <timer.h>
 
 #define	NEED_RESCHEDULE		(1U)
+#define	DISABLE_RESCHEDULE		(2U)
 
 #define DEL_MODE_INIT		(1U)
 #define DEL_MODE_IPI		(2U)
@@ -122,6 +123,8 @@ void deinit_thread_data(struct thread_object *obj);
 
 void make_reschedule_request(uint16_t pcpu_id);
 bool need_reschedule(uint16_t pcpu_id);
+void enable_reschedule(uint16_t pcpu_id);
+void disable_reschedule(uint16_t pcpu_id);
 
 void run_thread(struct thread_object *obj);
 void sleep_thread(struct thread_object *obj);

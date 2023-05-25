@@ -137,11 +137,29 @@ void make_reschedule_request(uint16_t pcpu_id)
 	}
 }
 
+void enable_reschedule(uint16_t pcpu_id)
+{
+	struct sched_control *ctl = &per_cpu(sched_ctl, pcpu_id);
+
+	bitmap_clear_lock(DISABLE_RESCHEDULE, &ctl->flags);
+}
+
+void disable_reschedule(uint16_t pcpu_id)
+{
+	struct sched_control *ctl = &per_cpu(sched_ctl, pcpu_id);
+
+	bitmap_set_lock(DISABLE_RESCHEDULE, &ctl->flags);
+}
+
 bool need_reschedule(uint16_t pcpu_id)
 {
 	struct sched_control *ctl = &per_cpu(sched_ctl, pcpu_id);
 
-	return bitmap_test(NEED_RESCHEDULE, &ctl->flags);
+	if (bitmap_test(DISABLE_RESCHEDULE, &ctl->flags)) {
+		return false;
+	} else {
+		return bitmap_test(NEED_RESCHEDULE, &ctl->flags);
+	}
 }
 
 void schedule(void)
