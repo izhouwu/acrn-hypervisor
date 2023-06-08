@@ -189,7 +189,7 @@ static int acrn_insert_asyncio(struct acrn_vcpu *vcpu, const uint64_t asyncio_fd
 		}
 
 		spinlock_release(&vm->asyncio_lock);
-		arch_fire_hsm_interrupt();
+		//arch_fire_hsm_interrupt();
 		ret = 0;
 	}
 	return ret;

@@ -71,6 +71,7 @@
 #include "cmd_monitor.h"
 #include "vdisplay.h"
 #include "iothread.h"
+#include "dm_vm_event.h"
 
 #define	VM_MAXCPU		16	/* maximum virtual cpus */
 
@@ -117,6 +118,8 @@ static void vm_loop(struct vmctx *ctx);
 
 static char io_request_page[4096] __aligned(4096);
 static char asyncio_page[4096] __aligned(4096);
+
+static char vm_event_page[4096] __aligned(4096);
 
 static struct acrn_io_request *ioreq_buf =
 				(struct acrn_io_request *)&io_request_page;
@@ -1119,6 +1122,12 @@ main(int argc, char *argv[])
 			pr_warn("ASYNIO capability is not supported by kernel or hyperviosr!\n");
 		}
 
+		pr_notice("vm setup vm event\n");
+		error = vm_init_vm_event(ctx, (uint64_t)vm_event_page);
+		if (error) {
+			pr_warn("VM_EVENT is not supported by kernel or hyperviosr!\n");
+		}
+
 		pr_notice("vm_setup_memory: size=0x%lx\n", memsize);
 		error = vm_setup_memory(ctx, memsize);
 		if (error) {
@@ -1198,6 +1207,7 @@ main(int argc, char *argv[])
 			break;
 		}
 
+		vm_event_deinit();
 		vm_deinit_vdevs(ctx);
 		mevent_deinit();
 		iothread_deinit();
