@@ -51,6 +51,8 @@ static int32_t shell_cpuid(int32_t argc, char **argv);
 static int32_t shell_reboot(int32_t argc, char **argv);
 static int32_t shell_rdmsr(int32_t argc, char **argv);
 static int32_t shell_wrmsr(int32_t argc, char **argv);
+static int32_t shell_vetest(int32_t argc, char **argv);
+
 
 static struct shell_cmd shell_cmds[] = {
 	{
@@ -154,6 +156,12 @@ static struct shell_cmd shell_cmds[] = {
 		.cmd_param	= SHELL_CMD_WRMSR_PARAM,
 		.help_str	= SHELL_CMD_WRMSR_HELP,
 		.fcn		= shell_wrmsr,
+	},
+	{
+		.str		= "vetest",
+		.cmd_param	= "",
+		.help_str	= "help",
+		.fcn		= shell_vetest,
 	},
 };
 
@@ -1614,4 +1622,24 @@ static int32_t shell_wrmsr(int32_t argc, char **argv)
 	}
 
 	return ret;
+}
+
+
+void send_test_msg(void *data);
+
+static int32_t shell_vetest(int32_t argc, char **argv)
+{
+	uint32_t vmid;
+	
+	switch (argc) {
+	case 2:
+		vmid = (uint32_t)strtol_deci(argv[1]);
+		break;
+	default:
+		vmid = 0;
+	}
+	
+	send_test_msg(get_vm_from_vmid(vmid));
+
+	return 0;
 }

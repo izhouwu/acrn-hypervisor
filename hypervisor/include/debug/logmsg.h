@@ -45,6 +45,8 @@ void asm_assert(int32_t line, const char *file, const char *txt);
 
 #endif /* HV_DEBUG */
 
+bool  get_is_fake_hv(void);
+
 void init_logmsg();
 
 /*

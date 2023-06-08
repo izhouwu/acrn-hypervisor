@@ -43,6 +43,7 @@
 #include "lpc.h"
 
 #include "log.h"
+#include "vm_event.h"
 
 /* #define DEBUG_RTC */
 #ifdef DEBUG_RTC
@@ -866,6 +867,14 @@ vrtc_addr_handler(struct vmctx *ctx, int vcpu, int in, int port,
 		  int bytes, uint32_t *eax, void *arg)
 {
 	struct vrtc *vrtc = arg;
+	struct vm_event ve;
+
+	pr_notice("vrtc io\n");
+	ve.type = 8;
+	snprintf((char*)ve.event_data, 28, 
+		"vrtc in%d port%d %d", in, port, *eax);
+
+	send_dm_vm_event(&ve);
 
 	if (bytes != 1)
 		return -1;
