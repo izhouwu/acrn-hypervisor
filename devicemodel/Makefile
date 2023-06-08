@@ -7,6 +7,7 @@ BASEDIR := $(shell pwd)
 DM_OBJDIR ?= $(CURDIR)/build
 DM_BUILD_VERSION ?=
 DM_BUILD_TAG ?=
+TOOLS := $(CURDIR)/../misc
 
 CC ?= gcc
 
@@ -39,6 +40,7 @@ CFLAGS += -I$(BASEDIR)/include
 CFLAGS += -I$(BASEDIR)/include/public
 CFLAGS += -I$(DM_OBJDIR)/include
 CFLAGS += -I$(TOOLS_OUT)/services
+CFLAGS += -I$(TOOLS)/library/include
 CFLAGS += -I$(SYSROOT)/usr/include/pixman-1
 CFLAGS += -I$(SYSROOT)/usr/include/glib-2.0
 CFLAGS += -I$(SYSROOT)/usr/include/SDL2
@@ -144,6 +146,7 @@ SRCS += hw/pci/pci_util.c
 SRCS += hw/pci/ptm.c
 SRCS += hw/pci/virtio/virtio_audio.c
 SRCS += hw/pci/virtio/virtio_net.c
+SRCS += hw/pci/virtio/virtio_camera.c
 SRCS += hw/pci/virtio/virtio_rnd.c
 SRCS += hw/pci/virtio/virtio_ipu.c
 SRCS += hw/pci/virtio/virtio_hyper_dmabuf.c
