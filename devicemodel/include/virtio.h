@@ -194,6 +194,7 @@ enum {
 #define	VIRTIO_TYPE_SCSI	8
 #define	VIRTIO_TYPE_9P		9
 #define	VIRTIO_TYPE_INPUT	18
+#define	VIRTIO_TYPE_SOUND	25
 
 /*
  * ACRN virtio device types
