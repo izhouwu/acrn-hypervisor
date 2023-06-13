@@ -44,6 +44,7 @@
 
 #define VIRTIO_SOUND_CARD	4
 #define VIRTIO_SOUND_STREAMS	4
+#define VIRTIO_SOUND_CHMAPS	64
 
 #define VIRTIO_SOUND_DEVICE_NAME	64
 
@@ -82,6 +83,11 @@ struct virtio_sound_msg_node {
 	uint16_t idx;
 };
 
+struct virtio_sound_chmap {
+	uint8_t channels;
+	uint8_t positions[VIRTIO_SND_CHMAP_MAX_SIZE];
+};
+
 struct virtio_sound_pcm {
 	snd_pcm_t *handle;
 	int hda_fn_nid;
@@ -98,6 +104,9 @@ struct virtio_sound_pcm {
 	struct virtio_sound_pcm_param param;
 	STAILQ_HEAD(, virtio_sound_msg_node) head;
 	pthread_mutex_t mtx;
+
+	struct virtio_sound_chmap *chmaps[VIRTIO_SOUND_CHMAPS];
+	uint32_t chmap_cnt;
 };
 
 /*dev struct*/
@@ -110,6 +119,7 @@ struct virtio_sound {
 
 	struct virtio_sound_pcm *streams[VIRTIO_SOUND_STREAMS];
 	int stream_cnt;
+	int chmap_cnt;
 
 	int max_tx_iov_cnt;
 	int max_rx_iov_cnt;
@@ -168,6 +178,46 @@ static const snd_pcm_format_t virtio_sound_v2s_format[] = {
  */
 static const uint32_t virtio_sound_t_rate[] = {
 	5512, 8000, 11025, 16000, 22050, 32000, 44100, 48000, 64000, 88200, 96000, 176400, 192000
+};
+
+static const uint8_t virtio_sound_s2v_chmap[] = {
+	VIRTIO_SND_CHMAP_NONE,
+	VIRTIO_SND_CHMAP_NA,
+	VIRTIO_SND_CHMAP_MONO,
+	VIRTIO_SND_CHMAP_FL,
+	VIRTIO_SND_CHMAP_FR,
+	VIRTIO_SND_CHMAP_RL,
+	VIRTIO_SND_CHMAP_RR,
+	VIRTIO_SND_CHMAP_FC,
+	VIRTIO_SND_CHMAP_LFE,
+	VIRTIO_SND_CHMAP_SL,
+	VIRTIO_SND_CHMAP_SR,
+	VIRTIO_SND_CHMAP_RC,
+	VIRTIO_SND_CHMAP_FLC,
+	VIRTIO_SND_CHMAP_FRC,
+	VIRTIO_SND_CHMAP_RLC,
+	VIRTIO_SND_CHMAP_RRC,
+	VIRTIO_SND_CHMAP_FLW,
+	VIRTIO_SND_CHMAP_FRW,
+	VIRTIO_SND_CHMAP_FLH,
+	VIRTIO_SND_CHMAP_FCH,
+	VIRTIO_SND_CHMAP_FRH,
+	VIRTIO_SND_CHMAP_TC,
+	VIRTIO_SND_CHMAP_TFL,
+	VIRTIO_SND_CHMAP_TFR,
+	VIRTIO_SND_CHMAP_TFC,
+	VIRTIO_SND_CHMAP_TRL,
+	VIRTIO_SND_CHMAP_TRR,
+	VIRTIO_SND_CHMAP_TRC,
+	VIRTIO_SND_CHMAP_TFLC,
+	VIRTIO_SND_CHMAP_TFRC,
+	VIRTIO_SND_CHMAP_TSL,
+	VIRTIO_SND_CHMAP_TSR,
+	VIRTIO_SND_CHMAP_LLFE,
+	VIRTIO_SND_CHMAP_RLFE,
+	VIRTIO_SND_CHMAP_BC,
+	VIRTIO_SND_CHMAP_BLC,
+	VIRTIO_SND_CHMAP_BRC
 };
 
 static inline int
@@ -834,6 +884,63 @@ virtio_sound_r_pcm_stop(struct virtio_sound *virt_snd, struct iovec *iov, uint8_
 	return (int)iov[1].iov_len;
 }
 
+static int
+virtio_sound_r_chmap_info(struct virtio_sound *virt_snd, struct iovec *iov, uint8_t n)
+{
+	struct virtio_snd_query_info *info = (struct virtio_snd_query_info *)iov[0].iov_base;
+	struct virtio_snd_chmap_info *chmap_info = iov[2].iov_base;
+	struct virtio_sound_pcm *stream = virt_snd->streams[0];
+	struct virtio_sound_chmap *chmap;
+	struct virtio_snd_hdr *ret = iov[1].iov_base;
+	int s, c = 0, i = 0, ret_len;
+
+	if (n != 3) {
+		WPRINTF("%s: invalid seg num %d!\n", __func__, n);
+		return 0;
+	}
+	if ((info->start_id + info->count) > virt_snd->chmap_cnt) {
+		WPRINTF("%s: invalid chmap, start %d, count = %d!\n", __func__,
+			info->start_id, info->count);
+		ret->code = VIRTIO_SND_S_BAD_MSG;
+		return (int)iov[1].iov_len;
+	}
+
+	ret_len = info->count * sizeof(struct virtio_snd_chmap_info);
+	if (ret_len > iov[2].iov_len) {
+		WPRINTF("%s: too small buffer %d, required %d!\n", __func__,
+			iov[2].iov_len, ret_len);
+		ret->code = VIRTIO_SND_S_BAD_MSG;
+		return (int)iov[1].iov_len;
+	}
+
+	for(s = 0; s < virt_snd->stream_cnt; s++) {
+		if (info->start_id >= i && info->start_id < i + virt_snd->streams[s]->chmap_cnt) {
+			c = info->start_id - i;
+			stream = virt_snd->streams[s];
+			break;
+		}
+		i += virt_snd->streams[s]->chmap_cnt;
+	}
+
+	for (i = 0; i < info->count; i++) {
+		chmap = stream->chmaps[c];
+		chmap_info[i].hdr.hda_fn_nid = stream->hda_fn_nid;
+		chmap_info[i].direction = stream->dir;
+		chmap_info[i].channels = chmap->channels;
+		memcpy(chmap_info[i].positions, chmap->positions, VIRTIO_SND_CHMAP_MAX_SIZE);
+
+		if (++c >= stream->chmap_cnt) {
+			if(++s >= virt_snd->stream_cnt)
+				break;
+			stream = virt_snd->streams[s];
+			c = 0;
+		}
+	}
+
+	ret->code = VIRTIO_SND_S_OK;
+	return ret_len + (int)iov[1].iov_len;
+}
+
 static void
 virtio_sound_notify_ctl(void *vdev, struct virtio_vq_info *vq)
 {
@@ -870,6 +977,9 @@ virtio_sound_notify_ctl(void *vdev, struct virtio_vq_info *vq)
 			case VIRTIO_SND_R_PCM_STOP:
 				ret_len = virtio_sound_r_pcm_stop(virt_snd, iov, n);
 				break;
+			case VIRTIO_SND_R_CHMAP_INFO:
+				ret_len = virtio_sound_r_chmap_info(virt_snd, iov, n);
+				break;
 			default:
 				WPRINTF("%s: unsupported request 0x%X!\n", __func__, n);
 				break;
@@ -891,7 +1001,7 @@ virtio_sound_cfg_init(struct virtio_sound *virt_snd)
 {
 	virt_snd->snd_cfg.streams = virt_snd->stream_cnt;
 	virt_snd->snd_cfg.jacks = 0;
-	virt_snd->snd_cfg.chmaps = 0;
+	virt_snd->snd_cfg.chmaps = virt_snd->chmap_cnt;
 	virt_snd->snd_cfg.controls = 0;
 }
 
@@ -928,7 +1038,8 @@ static int
 virtio_sound_pcm_param_init(struct virtio_sound_pcm *stream, int dir, char *name, int fn_id)
 {
 	snd_pcm_hw_params_t *hwparams;
-	uint32_t channels_min, channels_max, i;
+	snd_pcm_chmap_query_t **chmaps;
+	uint32_t channels_min, channels_max, i, j;
 
 	stream->dir = dir;
 	strncpy(stream->dev_name, name, VIRTIO_SOUND_DEVICE_NAME);
@@ -967,6 +1078,21 @@ virtio_sound_pcm_param_init(struct virtio_sound_pcm *stream, int dir, char *name
 	stream->param.channels_min = channels_min;
 	stream->param.channels_max = channels_max;
 
+	i = 0;
+	chmaps = snd_pcm_query_chmaps(stream->handle);
+	while (chmaps != NULL && chmaps[i] != NULL) {
+		stream->chmaps[i] = malloc(sizeof(struct virtio_sound_chmap));
+		if (stream->chmaps[i] == NULL) {
+			WPRINTF("%s: malloc chmap buffer fail!\n", __func__);
+			return -1;
+		}
+		stream->chmaps[i]->channels = chmaps[i]->map.channels;
+		for (j = 0; j < chmaps[i]->map.channels; j++)
+			stream->chmaps[i]->positions[j] = virtio_sound_s2v_chmap[chmaps[i]->map.pos[j]];
+		stream->chmap_cnt++;
+		i++;
+	}
+	snd_pcm_free_chmaps(chmaps);
 	STAILQ_INIT(&stream->head);
 
 	if (snd_pcm_close(stream->handle) < 0) {
@@ -1001,6 +1127,7 @@ virtio_sound_pcm_init(struct virtio_sound *virt_snd, char *device, char *hda_fn_
 	if (virtio_sound_pcm_param_init(stream, dir, stream->dev_name, stream->hda_fn_nid) == 0) {
 		virt_snd->streams[virt_snd->stream_cnt] = stream;
 		virt_snd->stream_cnt++;
+		virt_snd->chmap_cnt += stream->chmap_cnt;
 	} else {
 		WPRINTF("%s: stream %s close error!\n", __func__, stream->dev_name);
 		free(stream);
@@ -1141,6 +1268,7 @@ virtio_sound_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	}
 
 	virt_snd->stream_cnt = 0;
+	virt_snd->chmap_cnt = 0;
 
 	err = virtio_sound_parse_opts(virt_snd, opts);
 	if (err != 0) {
@@ -1158,7 +1286,7 @@ static void
 virtio_sound_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 {
 	struct virtio_sound *virt_snd = (struct virtio_sound *)dev->arg;
-	int s;
+	int s, i;
 
 	virt_snd->status = VIRTIO_SND_BE_DEINITED;
 	for (s = 0; s < virt_snd->stream_cnt; s++) {
@@ -1166,6 +1294,9 @@ virtio_sound_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 			WPRINTF("%s: stream %s close error!\n", __func__, virt_snd->streams[s]->dev_name);
 		}
 		pthread_mutex_destroy(&virt_snd->streams[s]->mtx);
+		for (i = 0; i < virt_snd->streams[s]->chmap_cnt; i++) {
+			free(virt_snd->streams[s]->chmaps[i]);
+		}
 		free(virt_snd->streams[s]);
 	}
 	pthread_mutex_destroy(&virt_snd->mtx);
