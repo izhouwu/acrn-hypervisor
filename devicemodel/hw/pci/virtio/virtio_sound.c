@@ -40,6 +40,7 @@
 #define VIRTIO_SND_S_HOSTCAPS		((1UL << VIRTIO_F_VERSION_1) | (1UL << VIRTIO_SND_F_CTLS))
 
 #define VIRTIO_SOUND_CTL_SEGS	8
+#define VIRTIO_SOUND_EVENT_SEGS	2
 #define VIRTIO_SOUND_XFER_SEGS	4
 
 #define VIRTIO_SOUND_CARD	4
@@ -142,6 +143,7 @@ struct virtio_sound_pcm {
 };
 
 struct vbs_ctl_elem {
+	// todo: Use snd_hctl_elem_t instead.
 	char identifier[VIRTIO_SOUND_IDENTIFIER];
 	char card[VIRTIO_SOUND_CARD_NAME];
 };
@@ -151,6 +153,13 @@ struct vbs_jack_elem {
 	char card[VIRTIO_SOUND_CARD_NAME];
 	uint32_t hda_reg_defconf;
 	uint32_t connected;
+};
+
+struct vbs_card {
+	char card[VIRTIO_SOUND_CARD_NAME];
+	snd_hctl_t *handle;
+	int count;
+	int start;
 };
 
 /*dev struct*/
@@ -171,12 +180,18 @@ struct virtio_sound {
 	struct vbs_jack_elem *jacks[VIRTIO_SOUND_JACKS];
 	int jack_cnt;
 
+	struct vbs_card *cards[VIRTIO_SOUND_CARD];
+	int card_cnt;
+
 	int max_tx_iov_cnt;
 	int max_rx_iov_cnt;
 	int status;
 };
 
 static int virtio_sound_cfgread(void *vdev, int offset, int size, uint32_t *retval);
+static int virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *event);
+
+static struct virtio_sound *vsound = NULL;
 
 static struct virtio_ops virtio_snd_ops = {
 	"virtio_sound",		/* our name */
@@ -295,6 +310,11 @@ virtio_sound_cfgread(void *vdev, int offset, int size, uint32_t *retval)
 	ptr = (uint8_t *)&virt_snd->snd_cfg + offset;
 	memcpy(retval, ptr, size);
 	return 0;
+}
+
+static struct virtio_sound *virtio_sound_get_device()
+{
+	return vsound;
 }
 
 static void
@@ -456,8 +476,14 @@ static int
 virtio_sound_recover(struct virtio_sound_pcm *stream)
 {
 	snd_pcm_state_t state = snd_pcm_state(stream->handle);
+	struct virtio_snd_event event;
 	int err = -1, i;
 
+	if (state == SND_PCM_STATE_XRUN) {
+		event.hdr.code = VIRTIO_SND_EVT_PCM_XRUN;
+		event.data = stream->id;
+		virtio_sound_send_event(virtio_sound_get_device(), &event);
+	}
 	if (state == SND_PCM_STATE_XRUN || state == SND_PCM_STATE_SETUP) {
 		err = snd_pcm_prepare(stream->handle);
 		if(err < 0) {
@@ -1777,6 +1803,30 @@ virtio_snd_jack_parse(char *identifier)
 }
 
 static int
+virtio_sound_set_card(struct virtio_sound *virt_snd, char *card)
+{
+	int i;
+
+	for (i = 0; i < virt_snd->card_cnt; i++) {
+		if(strcmp(virt_snd->cards[i]->card, card) == 0) {
+			return 0;
+		}
+	}
+	if (virt_snd->card_cnt >= VIRTIO_SOUND_CARD) {
+		WPRINTF("%s: too many cards %d!\n", __func__, virt_snd->card_cnt);
+		return -1;
+	}
+	virt_snd->cards[virt_snd->card_cnt] = malloc(sizeof(struct vbs_card));
+	if (virt_snd->cards[virt_snd->card_cnt] == NULL) {
+		WPRINTF("%s: malloc card node %d fail!\n", __func__, i);
+		return -1;
+	}
+	strncpy(virt_snd->cards[virt_snd->card_cnt]->card, card, VIRTIO_SOUND_CARD_NAME);
+	virt_snd->card_cnt++;
+	return 0;
+}
+
+static int
 virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *identifier)
 {
 	snd_ctl_elem_info_t *info;
@@ -1798,6 +1848,10 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 		}
 	} else {
 		strncpy(card, card_str, VIRTIO_SOUND_CARD_NAME);
+	}
+	if(virtio_sound_set_card(virt_snd, card) != 0) {
+		WPRINTF("%s: set card(%s) fail!\n", __func__, card);
+		return -1;
 	}
 	snd_ctl_elem_info_alloca(&info);
 
@@ -1895,6 +1949,183 @@ virtio_sound_parse_opts(struct virtio_sound *virt_snd, char *opts)
 }
 
 static int
+virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *event)
+{
+	struct virtio_vq_info *vq = &virt_snd->vq[VIRTIO_SND_VQ_EVENT];
+	struct iovec iov[VIRTIO_SOUND_EVENT_SEGS];
+	int n;
+	uint16_t idx;
+
+	if(!vq_has_descs(vq)) {
+		WPRINTF("%s: vq has no descriptors!\n", __func__);
+		return -1;
+	}
+	n = vq_getchain(vq, &idx, iov, VIRTIO_SOUND_EVENT_SEGS, NULL);
+	if (n <= 0) {
+		WPRINTF("%s: fail to getchain!\n", __func__);
+		return -1;
+	}
+	if (n > VIRTIO_SOUND_EVENT_SEGS) {
+		pr_warn("%s: invalid chain, desc number %d!\n", __func__, n);
+		vq_retchain(vq);
+		return -1;
+	}
+
+	memcpy(iov[0].iov_base, event, sizeof(struct virtio_snd_event));
+	vq_relchain(vq, idx, sizeof(struct virtio_snd_event));
+	vq_endchains(vq, 0);
+
+	return 0;
+}
+
+static int
+virtio_sound_event_callback(snd_hctl_elem_t *helem, unsigned int mask)
+{
+	snd_ctl_elem_id_t *id;
+	struct virtio_sound *virt_snd = virtio_sound_get_device();
+	struct virtio_snd_event event;
+	char *str;
+	int i;
+
+	/*
+	 * When close hctl handle while deinit virtio sound,
+	 * alsa lib will trigger a poll event. Just return immediately.
+	 */
+	if (virt_snd->status == VIRTIO_SND_BE_DEINITED)
+		return 0;
+
+	snd_ctl_elem_id_alloca(&id);
+	snd_hctl_elem_get_id(helem, id);
+	str = snd_ctl_ascii_elem_id_get(id);
+	if (strstr(str, "Jack")) {
+		for (i = 0; i < virt_snd->jack_cnt; i++) {
+			// todo: Use snd_hctl_elem_t instead.
+			if (strcmp(str, virt_snd->jacks[i]->identifier) == 0) {
+				virt_snd->jacks[i]->connected = virtio_sound_get_jack_value(virt_snd->jacks[i]->card, virt_snd->jacks[i]->identifier);
+				if (virt_snd->jacks[i]->connected < 0) {
+					WPRINTF("%s: Jack %s read value fail!\n", __func__, str);
+					return 0;
+				}
+				if (virt_snd->jacks[i]->connected > 0)
+					event.hdr.code = VIRTIO_SND_EVT_JACK_CONNECTED;
+				else
+					event.hdr.code = VIRTIO_SND_EVT_JACK_DISCONNECTED;
+				event.data = i;
+				break;
+			}
+		}
+		if (i == virt_snd->jack_cnt) {
+			WPRINTF("%s: %d Jack %s miss matched!\n", __func__, i, str);
+			return 0;
+		}
+	} else {
+		for (i = 0; i < virt_snd->ctl_cnt; i++) {
+			// todo: Use snd_hctl_elem_t instead.
+			if (strcmp(str, virt_snd->ctls[i]->identifier) == 0) {
+				event.hdr.code = VIRTIO_SND_EVT_CTL_NOTIFY;
+				event.data = (i << 16) | (mask & 0xffff);
+				break;
+			}
+		}
+		if (i == virt_snd->ctl_cnt) {
+			WPRINTF("%s: ctl %s miss matched!\n", __func__, str);
+			return 0;
+		}
+	}
+	if (virtio_sound_send_event(virt_snd, &event) != 0) {
+		WPRINTF("%s: event send fail!\n", __func__);
+	}
+	return 0;
+}
+
+static void *
+virtio_sound_event_thread(void *param)
+{
+	struct virtio_sound *virt_snd = (struct virtio_sound *)param;
+	struct pollfd *pfd;
+	unsigned short *revents;
+	int i, j, err, npfds = 0, max = 0;
+
+	for (i = 0; i < virt_snd->card_cnt; i++) {
+		npfds += virt_snd->cards[i]->count;
+		max = (max > virt_snd->cards[i]->count) ? max : virt_snd->cards[i]->count;
+	}
+
+	pfd = alloca(sizeof(*pfd) * npfds);
+	revents = alloca(sizeof(*revents) * max);
+	for (i = 0; i < virt_snd->card_cnt; i++) {
+		err = snd_hctl_poll_descriptors(virt_snd->cards[i]->handle, &pfd[virt_snd->cards[i]->start], virt_snd->cards[i]->count);
+		if (err < 0) {
+			WPRINTF("%s: fail to get poll descriptors!\n", __func__);
+			pthread_exit(NULL);
+		}
+	}
+
+	do {
+		err = poll(pfd, npfds, -1);
+		if (err < 0)
+			continue;
+		for (i = 0; i < virt_snd->card_cnt; i++) {
+			snd_hctl_poll_descriptors_revents(virt_snd->cards[i]->handle, &pfd[virt_snd->cards[i]->start],
+				virt_snd->cards[i]->count, revents);
+			for (j = 0; j < virt_snd->cards[i]->count; j++) {
+				if((revents[j] & (POLLIN | POLLOUT)) != 0) {
+					snd_hctl_handle_events(virt_snd->cards[i]->handle);
+					break;
+				}
+			}
+		}
+	} while (virt_snd->status != VIRTIO_SND_BE_DEINITED);
+
+	pthread_exit(NULL);
+}
+
+static int
+virtio_sound_event_init(struct virtio_sound *virt_snd, char *opts)
+{
+	snd_hctl_elem_t *helem;
+	snd_ctl_elem_id_t *id;
+	pthread_attr_t attr;
+	pthread_t tid;
+	char *cpy, *c, *str;
+	int i, start = 0;
+
+	c = cpy = strdup(opts);
+
+	snd_ctl_elem_id_alloca(&id);
+	for (i = 0; i < virt_snd->card_cnt; i++) {
+		if (snd_hctl_open(&virt_snd->cards[i]->handle, virt_snd->cards[i]->card, 0)) {
+			WPRINTF("%s: hctl open fail, card %s!\n", __func__, virt_snd->cards[i]->card);
+			free(c);
+			return -1;
+		}
+		if (snd_hctl_load(virt_snd->cards[i]->handle) < 0) {
+			WPRINTF("%s: hctl load fail, card %s!\n", __func__, virt_snd->cards[i]->card);
+			snd_hctl_close(virt_snd->cards[i]->handle);
+			free(c);
+			return -1;
+		}
+		for (helem = snd_hctl_first_elem(virt_snd->cards[i]->handle); helem; helem = snd_hctl_elem_next(helem)) {
+			snd_hctl_elem_get_id(helem, id);
+			str = snd_ctl_ascii_elem_id_get(id);
+			// todo: Use snd_hctl_elem_t instead.
+			if (!str || strstr(cpy, str) == NULL)
+				continue;
+			snd_hctl_elem_set_callback(helem, virtio_sound_event_callback);
+		}
+		virt_snd->cards[i]->count = snd_hctl_poll_descriptors_count(virt_snd->cards[i]->handle);
+		virt_snd->cards[i]->start = start;
+		start += virt_snd->cards[i]->count;
+	}
+
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&tid, &attr, virtio_sound_event_thread, (void *)virt_snd);
+	free(c);
+	return 0;
+}
+
+static int
 virtio_sound_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 {
 	struct virtio_sound *virt_snd;
@@ -1972,6 +2203,7 @@ virtio_sound_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	virt_snd->chmap_cnt = 0;
 	virt_snd->ctl_cnt = 0;
 	virt_snd->jack_cnt = 0;
+	virt_snd->card_cnt = 0;
 
 	err = virtio_sound_parse_opts(virt_snd, opts);
 	if (err != 0) {
@@ -1980,9 +2212,16 @@ virtio_sound_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 		return err;
 	}
 
+	err = virtio_sound_event_init(virt_snd, opts);
+	if (err != 0) {
+		free(virt_snd);
+		return err;
+	}
+
 	virtio_sound_cfg_init(virt_snd);
 	virt_snd->status = VIRTIO_SND_BE_INITED;
-	return 0;
+	vsound = virt_snd;
+    return 0;
 }
 
 static void
@@ -2008,6 +2247,10 @@ virtio_sound_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	}
 	for (i = 0; i < virt_snd->jack_cnt; i++) {
 		free(virt_snd->jacks[i]);
+	}
+	for (i = 0; i < virt_snd->card_cnt; i++) {
+		snd_hctl_close(virt_snd->cards[i]->handle);
+		free(virt_snd->cards[i]);
 	}
 	free(virt_snd);
 }
