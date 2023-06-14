@@ -45,6 +45,7 @@
 #define VIRTIO_SOUND_CARD	4
 #define VIRTIO_SOUND_STREAMS	4
 #define VIRTIO_SOUND_CTLS	128
+#define VIRTIO_SOUND_JACKS	64
 #define VIRTIO_SOUND_CHMAPS	64
 
 #define VIRTIO_SOUND_CARD_NAME	64
@@ -52,6 +53,32 @@
 #define VIRTIO_SOUND_IDENTIFIER	128
 
 #define VIRTIO_TLV_SIZE	1024
+
+#define HDA_JACK_LINE_OUT	0
+#define HDA_JACK_SPEAKER	1
+#define HDA_JACK_HP_OUT	2
+#define HDA_JACK_CD	3
+#define HDA_JACK_SPDIF_OUT	4
+#define HDA_JACK_DIG_OTHER_OUT	5
+#define HDA_JACK_LINE_IN	8
+#define HDA_JACK_AUX 9
+#define HDA_JACK_MIC_IN	10
+#define HDA_JACK_SPDIF_IN	12
+#define HDA_JACK_DIG_OTHER_IN	13
+#define HDA_JACK_OTHER	0xf
+
+#define HDA_JACK_LOCATION_INTERNAL	0x00
+#define HDA_JACK_LOCATION_EXTERNAL	0x01
+#define HDA_JACK_LOCATION_SEPARATE	0x02
+
+#define HDA_JACK_LOCATION_NONE	0
+#define HDA_JACK_LOCATION_REAR	1
+#define HDA_JACK_LOCATION_FRONT	2
+
+#define HDA_JACK_LOCATION_HDMI	0x18
+
+#define HDA_JACK_DEFREG_DEVICE_SHIFT	20
+#define HDA_JACK_DEFREG_LOCATION_SHIFT	24
 
 #define WPRINTF(format, arg...) pr_err(format, ##arg)
 
@@ -119,6 +146,13 @@ struct vbs_ctl_elem {
 	char card[VIRTIO_SOUND_CARD_NAME];
 };
 
+struct vbs_jack_elem {
+	char identifier[VIRTIO_SOUND_IDENTIFIER];
+	char card[VIRTIO_SOUND_CARD_NAME];
+	uint32_t hda_reg_defconf;
+	uint32_t connected;
+};
+
 /*dev struct*/
 struct virtio_sound {
 	struct virtio_base base;
@@ -133,6 +167,9 @@ struct virtio_sound {
 
 	struct vbs_ctl_elem *ctls[VIRTIO_SOUND_CTLS];
 	int ctl_cnt;
+
+	struct vbs_jack_elem *jacks[VIRTIO_SOUND_JACKS];
+	int jack_cnt;
 
 	int max_tx_iov_cnt;
 	int max_rx_iov_cnt;
@@ -669,6 +706,75 @@ err:
 	if (hctl != NULL)
 		snd_hctl_close(hctl);
 	return NULL;
+}
+
+static int
+virtio_sound_get_jack_value(char *card, char *identifier)
+{
+	snd_hctl_elem_t *elem;
+	snd_ctl_elem_info_t *ctl;
+	snd_ctl_elem_value_t *ctl_value;
+	int value;
+
+	elem = virtio_sound_get_ctl_elem(card, identifier);
+	if (elem == NULL) {
+		WPRINTF("%s: get %s ctl elem fail!\n", __func__, identifier);
+		return -1;
+	}
+	snd_ctl_elem_info_alloca(&ctl);
+	if (snd_hctl_elem_info(elem, ctl) < 0 || snd_ctl_elem_info_is_readable(ctl) == 0) {
+		WPRINTF("%s: access check fail, identifier is %s!\n", __func__, identifier);
+		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		return -1;
+	}
+	snd_ctl_elem_value_alloca(&ctl_value);
+	if (snd_hctl_elem_read(elem, ctl_value) < 0) {
+		WPRINTF("%s: read %s value fail!\n", __func__, identifier);
+		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		return -1;
+	}
+	value = snd_ctl_elem_value_get_boolean(ctl_value, 0);
+	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+	return value;
+}
+
+static int
+virtio_sound_r_jack_info(struct virtio_sound *virt_snd, struct iovec *iov, uint8_t n)
+{
+	struct virtio_snd_query_info *info = (struct virtio_snd_query_info *)iov[0].iov_base;
+	struct virtio_snd_jack_info *jack_info = iov[2].iov_base;
+	struct virtio_snd_hdr *ret = iov[1].iov_base;
+	int j = 0, i = 0, ret_len;
+
+
+	if (n != 3) {
+		WPRINTF("%s: invalid seg num %d!\n", __func__, n);
+		return 0;
+	}
+	if ((info->start_id + info->count) > virt_snd->jack_cnt) {
+		WPRINTF("%s: invalid jack, start %d, count = %d!\n", __func__,
+			info->start_id, info->count);
+		ret->code = VIRTIO_SND_S_BAD_MSG;
+		return (int)iov[1].iov_len;
+	}
+	ret_len = info->count * sizeof(struct virtio_snd_jack_info);
+	if (ret_len > iov[2].iov_len) {
+		WPRINTF("%s: too small buffer %d, required %d!\n", __func__,
+			iov[2].iov_len, ret_len);
+		ret->code = VIRTIO_SND_S_BAD_MSG;
+		return (int)iov[1].iov_len;
+	}
+
+	memset(jack_info, 0, ret_len);
+	j = info->start_id;
+	for (i = 0; i < info->count; i++) {
+		jack_info[i].connected = virt_snd->jacks[j]->connected;
+		jack_info[i].hda_reg_defconf = virt_snd->jacks[j]->hda_reg_defconf;
+		j++;
+	}
+
+	ret->code = VIRTIO_SND_S_OK;
+	return ret_len + (int)iov[1].iov_len;
 }
 
 static int
@@ -1412,6 +1518,11 @@ virtio_sound_notify_ctl(void *vdev, struct virtio_vq_info *vq)
 
 		info = (struct virtio_snd_query_info *)iov[0].iov_base;
 		switch (info->hdr.code) {
+			case VIRTIO_SND_R_JACK_INFO:
+				ret_len = virtio_sound_r_jack_info (virt_snd, iov, n);
+				break;
+			// case VIRTIO_SND_R_JACK_REMAP:
+			//	break;
 			case VIRTIO_SND_R_PCM_INFO:
 				ret_len = virtio_sound_r_pcm_info(virt_snd, iov, n);
 				break;
@@ -1474,7 +1585,7 @@ static void
 virtio_sound_cfg_init(struct virtio_sound *virt_snd)
 {
 	virt_snd->snd_cfg.streams = virt_snd->stream_cnt;
-	virt_snd->snd_cfg.jacks = 0;
+	virt_snd->snd_cfg.jacks = virt_snd->jack_cnt;
 	virt_snd->snd_cfg.chmaps = virt_snd->chmap_cnt;
 	virt_snd->snd_cfg.controls = virt_snd->ctl_cnt;
 }
@@ -1617,6 +1728,54 @@ virtio_sound_pcm_init(struct virtio_sound *virt_snd, char *device, char *hda_fn_
 	return 0;
 }
 
+static uint32_t
+virtio_snd_jack_parse(char *identifier)
+{
+	uint32_t location, device;
+
+	if (strstr(identifier, "Dock")) {
+		location = HDA_JACK_LOCATION_SEPARATE;
+	} else if (strstr(identifier, "Internal")) {
+		location = HDA_JACK_LOCATION_INTERNAL;
+	} else if (strstr(identifier, "Rear")) {
+		location = HDA_JACK_LOCATION_REAR;
+	} else if (strstr(identifier, "Front")) {
+		location = HDA_JACK_LOCATION_FRONT;
+	} else {
+		location = HDA_JACK_LOCATION_NONE;
+	}
+
+	if (strstr(identifier, "Line Out")) {
+		device = HDA_JACK_LINE_OUT;
+	} else if (strstr(identifier, "Line")) {
+		device = HDA_JACK_LINE_IN;
+	} else if (strstr(identifier, "Speaker")) {
+		device = HDA_JACK_SPEAKER;
+		location = HDA_JACK_LOCATION_INTERNAL;
+	} else if (strstr(identifier, "Mic")) {
+		device = HDA_JACK_MIC_IN;
+	} else if (strstr(identifier, "CD")) {
+		device = HDA_JACK_CD;
+	} else if (strstr(identifier, "Headphone")) {
+		device = HDA_JACK_HP_OUT;
+	} else if (strstr(identifier, "Aux")) {
+		device = HDA_JACK_AUX;
+	} else if (strstr(identifier, "SPDIF In")) {
+		device = HDA_JACK_SPDIF_IN;
+	} else if (strstr(identifier, "Digital In")) {
+		device = HDA_JACK_DIG_OTHER_IN;
+	} else if (strstr(identifier, "SPDIF")) {
+		device = HDA_JACK_SPDIF_OUT;
+	} else if (strstr(identifier, "HDMI")) {
+		device = HDA_JACK_DIG_OTHER_OUT;
+		location = HDA_JACK_LOCATION_HDMI;
+	} else {
+		device = HDA_JACK_OTHER;
+	}
+
+	return (device << HDA_JACK_DEFREG_DEVICE_SHIFT) | (location << HDA_JACK_DEFREG_LOCATION_SHIFT);
+}
+
 static int
 virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *identifier)
 {
@@ -1647,16 +1806,29 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 		WPRINTF("%s: get %s ctl elem fail!\n", __func__, identifier);
 		return -1;
 	}
-
-	virt_snd->ctls[virt_snd->ctl_cnt] = malloc(sizeof(struct vbs_ctl_elem));
-	if (virt_snd->ctls[virt_snd->ctl_cnt] == NULL) {
-		WPRINTF("%s: malloc ctl elem fail!\n", __func__);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
-		return -1;
+	if (strstr(identifier, "Jack") != NULL) {
+		virt_snd->jacks[virt_snd->jack_cnt] = malloc(sizeof(struct vbs_jack_elem));
+		if (virt_snd->jacks[virt_snd->jack_cnt] == NULL) {
+			WPRINTF("%s: malloc jack elem fail!\n", __func__);
+			snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			return -1;
+		}
+		strncpy(virt_snd->jacks[virt_snd->jack_cnt]->card, card, VIRTIO_SOUND_CARD_NAME);
+		strncpy(virt_snd->jacks[virt_snd->jack_cnt]->identifier, identifier, VIRTIO_SOUND_CARD_NAME);
+		virt_snd->jacks[virt_snd->jack_cnt]->hda_reg_defconf = virtio_snd_jack_parse(identifier);
+		virt_snd->jacks[virt_snd->jack_cnt]->connected = virtio_sound_get_jack_value(card, identifier);
+		virt_snd->jack_cnt++;
+	} else {
+		virt_snd->ctls[virt_snd->ctl_cnt] = malloc(sizeof(struct vbs_ctl_elem));
+		if (virt_snd->ctls[virt_snd->ctl_cnt] == NULL) {
+			WPRINTF("%s: malloc ctl elem fail!\n", __func__);
+			snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			return -1;
+		}
+		strncpy(virt_snd->ctls[virt_snd->ctl_cnt]->card, card, VIRTIO_SOUND_CARD_NAME);
+		strncpy(virt_snd->ctls[virt_snd->ctl_cnt]->identifier, identifier, VIRTIO_SOUND_CARD_NAME);
+		virt_snd->ctl_cnt++;
 	}
-	strncpy(virt_snd->ctls[virt_snd->ctl_cnt]->card, card, VIRTIO_SOUND_CARD_NAME);
-	strncpy(virt_snd->ctls[virt_snd->ctl_cnt]->identifier, identifier, VIRTIO_SOUND_IDENTIFIER);
-	virt_snd->ctl_cnt++;
 	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	return 0;
@@ -1799,6 +1971,7 @@ virtio_sound_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	virt_snd->stream_cnt = 0;
 	virt_snd->chmap_cnt = 0;
 	virt_snd->ctl_cnt = 0;
+	virt_snd->jack_cnt = 0;
 
 	err = virtio_sound_parse_opts(virt_snd, opts);
 	if (err != 0) {
@@ -1832,6 +2005,9 @@ virtio_sound_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	pthread_mutex_destroy(&virt_snd->mtx);
 	for (i = 0; i < virt_snd->ctl_cnt; i++) {
 		free(virt_snd->ctls[i]);
+	}
+	for (i = 0; i < virt_snd->jack_cnt; i++) {
+		free(virt_snd->jacks[i]);
 	}
 	free(virt_snd);
 }
