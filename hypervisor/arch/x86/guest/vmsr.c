@@ -86,6 +86,17 @@ static uint32_t emulated_guest_msrs[NUM_EMULATED_MSRS] = {
 	MSR_IA32_MPERF,
 	MSR_IA32_APERF,
 
+
+	/*
+	 * Thermal MSRs disabled:
+	 * CPUID.01H.EDX[22] IA32_THERM_INTERRUPT, IA32_THERM_STATUS, MSR_IA32_CLOCK_MODULATION
+	 * CPUID.06H:EAX[6] IA32_PACKAGE_THERM_INTERRUPT, IA32_PACKAGE_THERM_STATUS
+	 */
+	MSR_IA32_CLOCK_MODULATION,
+	MSR_IA32_THERM_INTERRUPT,
+	MSR_IA32_THERM_STATUS,
+	MSR_IA32_PACKAGE_THERM_INTERRUPT,
+	MSR_IA32_PACKAGE_THERM_STATUS,
 	/* VMX: CPUID.01H.ECX[5] */
 #ifdef CONFIG_NVMX_ENABLED
 	LIST_OF_VMX_MSRS,
@@ -682,6 +693,20 @@ int32_t rdmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		v = vcpu_get_guest_msr(vcpu, MSR_IA32_PERF_CTL);
 		break;
 	}
+	case MSR_IA32_CLOCK_MODULATION:
+	case MSR_IA32_THERM_INTERRUPT:
+	case MSR_IA32_THERM_STATUS:
+	case MSR_IA32_PACKAGE_THERM_INTERRUPT:
+	case MSR_IA32_PACKAGE_THERM_STATUS:
+	{
+		if (!is_service_vm(vcpu->vm)) {
+			pr_acrnlog("thm msr rd on %#x", msr);
+		}
+		v = msr_read(msr);
+		break;
+	}
+
+
 	case MSR_IA32_PM_ENABLE:
 	case MSR_IA32_HWP_CAPABILITIES:
 	case MSR_IA32_HWP_REQUEST:
@@ -1066,6 +1091,19 @@ int32_t wrmsr_vmexit_handler(struct acrn_vcpu *vcpu)
 		}
 		break;
 	}
+	case MSR_IA32_CLOCK_MODULATION:
+	case MSR_IA32_THERM_INTERRUPT:
+	case MSR_IA32_THERM_STATUS:
+	case MSR_IA32_PACKAGE_THERM_INTERRUPT:
+	case MSR_IA32_PACKAGE_THERM_STATUS:
+	{
+		if (!is_service_vm(vcpu->vm)) {
+			pr_acrnlog("thm msr wr on %#x", msr);
+		}
+		msr_write(msr, v);
+		break;
+	}
+
 	case MSR_IA32_PERF_STATUS:
 	{
 		break;
@@ -1314,5 +1352,8 @@ void update_msr_bitmap_x2apic_passthru(struct acrn_vcpu *vcpu)
 	enable_msr_interception(msr_bitmap, MSR_IA32_EXT_XAPICID, INTERCEPT_READ);
 	enable_msr_interception(msr_bitmap, MSR_IA32_EXT_APIC_LDR, INTERCEPT_READ);
 	enable_msr_interception(msr_bitmap, MSR_IA32_EXT_APIC_ICR, INTERCEPT_WRITE);
+	if (!is_vtm_configured(vcpu->vm)) {
+		enable_msr_interception(msr_bitmap, MSR_IA32_EXT_APIC_LVT_THERMAL, INTERCEPT_READ_WRITE);
+	}
 	set_tsc_msr_interception(vcpu, exec_vmread64(VMX_TSC_OFFSET_FULL) != 0UL);
 }
