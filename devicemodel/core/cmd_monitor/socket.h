@@ -21,7 +21,8 @@ struct socket_client {
 	socklen_t addr_len;
 	char buf[CLIENT_BUF_LEN];
 	int len; /* buf len */
-
+	static pthread_mutex_t *per_client_mutex;
+	void (*free_client_cb)(struct socket_client *self);
 	LIST_ENTRY(socket_client) list;
 };
 

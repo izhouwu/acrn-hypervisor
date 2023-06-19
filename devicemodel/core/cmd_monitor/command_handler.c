@@ -67,6 +67,176 @@ static int send_socket_ack(struct socket_dev *sock, int fd, bool normal)
 	return ret;
 }
 
+static struct socket_client *vm_event_client = NULL;
+static pthread_mutex_t vm_event_client_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void vm_event_free_cb(struct socket_client *self)
+{
+	vm_event_client = NULL;
+}
+
+static int set_vm_event_client(struct socket_client *client)
+{
+	if (vm_event_client != NULL) {
+		pr_err("vm event client already registerred.\n");
+		return -1;
+	} else {
+		vm_event_client = client;
+		client->per_client_mutex = &vm_event_client_mutex;
+		client->free_client_cb = vm_event_free_cb;
+		return 0;
+	}
+}
+
+struct rtc_change_event_data {
+	uint8_t yy;
+	uint8_t mm;
+	uint8_t dd;
+	uint8_t hh;
+	uint8_t mi;
+	uint8_t ss;
+};
+
+enum vm_event_data_element_type {
+	VE_INVALID = 0,
+	VE_U8_TYPE,
+	VE_U32_TYPE,
+	VE_U64_TYPE,
+	VE_STR_TYPE,
+	VE_BOOL_TYPE,
+};
+
+#define MAX_ELEMENT_NUM 32
+
+struct element {
+	vm_event_data_element_type el_type;
+	char *name;
+	uint64_t offset_in_struct;
+}; 
+
+struct vm_event_json_trans_table {
+	vm_event_type type;
+	struct element ele[MAX_ELEMENT_NUM];
+};
+
+#define OFFSET_IN_STRUCT(s, e)  ((uint64_t)&((struct s *)0)->e)
+#define VM_EVENT_DATA_ELE(s, e, t) {t, #e, OFFSET_IN_STRUCT(s, e)}
+
+static struct vm_event_json_trans_table trans[] = {
+	{
+		VM_EVNT_TYPE_RTC_CHG,
+		{
+			VM_EVENT_DATA_ELE(rtc_change_event_data, "yy", VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(rtc_change_event_data, "mm", VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(rtc_change_event_data, "dd", VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(rtc_change_event_data, "hh", VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(rtc_change_event_data, "mi", VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(rtc_change_event_data, "ss", VE_U8_TYPE),
+		},
+	},
+
+};
+
+static char *generate_vm_event_message(struct vm_event *event)
+{
+	char *event_msg = NULL;
+	cJSON *val;
+	cJSON *event_obj = cJSON_CreateObject();
+	int i, j;
+
+	if (event_obj == NULL)
+		return NULL;
+	val = cJSON_CreateNumber(event->type);
+	if (val == NULL)
+		return NULL;
+	cJSON_AddItemToObject(event_obj, "event", val);
+
+	for (i = 0; i < ARRAY_SIZE(trans); i++){
+		if (event->type == trans[i].type) {
+			break;
+		}
+	}
+
+	if(i == ARRAY_SIZE(trans)) {
+		goto fail_out;
+	}
+
+	for (j = 0; j < MAX_ELEMENT_NUM; j ++) {
+		if (trans[i].ele[j].el_type == VE_INVALID) {
+			break;
+		}
+		switch(trans[i].ele[j].el_type) {
+			case VE_U8_TYPE:
+				cJSON_AddItemToObject(event_obj,
+					cJSON_CreateNumber(*(uint8_t *)(((uint8_t *)event) + trans[i].ele[j].offset_in_struct)));
+				if (val == NULL)
+				break;
+			case VE_STR_TYPE:
+				break;
+			case VE_BOOL_TYPE:
+				break;
+			default:
+				break;
+		}
+
+	}
+	event_msg = cJSON_Print(event_obj);
+	if (event_msg == NULL)
+		fprintf(stderr, "Failed to generate vm_event message.\n");
+fail_out:
+	cJSON_Delete(event_obj);
+	return event_msg;
+}
+
+int vm_monitor_send_vm_event(struct vm_event *event)
+{
+	int ret = -1;
+	struct socket_client *client;
+	char *msg = generate_vm_event_message(event);
+	if (msg == NULL) {
+		return -1;
+	}
+
+	pthread_mutex_lock(&vm_event_client_mutex);
+	client = vm_event_client;
+	if (client == NULL) {
+		goto fail_out;
+	}
+	memset(client->buf, 0, CLIENT_BUF_LEN);
+	memcpy(client->buf, msg, strlen(msg));
+	client->len = strlen(msg);
+	ret = write_socket_char(client);
+
+fail_out:
+	free(msg);
+	pthread_mutex_unlock(&vm_event_client_mutex);
+	return ret;
+}
+
+int user_vm_request_vm_event_handler(void *arg, void *command_para)
+{
+	int ret;
+	struct command_parameters *cmd_para = (struct command_parameters *)command_para;
+	struct handler_args *hdl_arg = (struct handler_args *)arg;
+	struct socket_dev *sock = (struct socket_dev *)hdl_arg->channel_arg;
+	struct socket_client *client = NULL;
+	bool cmd_completed = false;
+
+	client = find_socket_client(sock, cmd_para->fd);
+	if (client == NULL)
+		return -1;
+
+	if (set_vm_event_client(client) == 0) {
+		cmd_completed = true;
+	}
+
+	ret = send_socket_ack(sock, cmd_para->fd, cmd_completed);
+	if (ret < 0) {
+		pr_err("Failed to send ACK message by socket.\n");
+	}
+	return ret;
+}
+
 int user_vm_destroy_handler(void *arg, void *command_para)
 {
 	int ret;

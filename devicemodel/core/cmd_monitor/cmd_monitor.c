@@ -99,6 +99,7 @@ static void register_socket_message_handlers(struct vmctx *ctx)
 	arg.ctx_arg = ctx;
 	register_command_handler(user_vm_destroy_handler, &arg, DESTROY);
 	register_command_handler(user_vm_blkrescan_handler, &arg, BLKRESCAN);
+	register_command_handler(user_vm_request_vm_event_handler, &arg, REQ_VM_EVENT);
 }
 
 int init_cmd_monitor(struct vmctx *ctx)
@@ -126,4 +127,24 @@ int acrn_parse_cmd_monitor(char *arg)
 		err = 0;
 	}
 	return err;
+}
+
+static struct socket_client *vm_event_client = NULL;
+int set_vm_event_client(struct socket_client *client)
+{
+	if (vm_event_client != NULL || vm_event_client->fd >= 0) {
+		return -1;
+	} else {
+		vm_event_client = client;
+		return 0;
+	}
+}
+
+int vm_monitor_send_vm_event(struct vm_event *event)
+{
+	if (vm_event_client == NULL || vm_event_client->fd < 0) {
+		return -1;
+	}
+	
+	return 0;
 }
