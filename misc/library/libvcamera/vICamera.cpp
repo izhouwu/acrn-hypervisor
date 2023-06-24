@@ -228,6 +228,44 @@ int vcamera_get_frame_size(int camera_id, int format, int width, int height, int
 	return icamera::get_frame_size(get_physical_id(camera_id), format, width, height, field, bpp);
 }
 
+
+int vcamera_get_formats_number(int camera_id)
+{
+	int ret;
+	int i;
+	camera_info_t tmp;
+	stream_array_t config;
+
+	ret = icamera::get_camera_info(get_physical_id(camera_id),tmp);
+	if(ret == 0) {
+		ret = tmp.capability->getSupportedStreamConfig(config);
+		if (ret == 0) {
+			return config.size();
+		}
+	}
+	return -1;
+}
+
+int vcamera_get_formats(int camera_id, stream_t *p, int *streams_number)
+{
+	int ret;
+	int i;
+	camera_info_t tmp;
+	stream_array_t config;
+
+	ret = icamera::get_camera_info(get_physical_id(camera_id),tmp);
+	if(ret == 0) {
+		ret = tmp.capability->getSupportedStreamConfig(config);
+		if (ret == 0) {
+			for (i = 0; i < config.size(); i++,p++)
+				*p = config[i];
+			*streams_number = i;
+			return 0;
+		}
+	}
+	return -1;
+}
+
 camera_callback_ops_t g_callback;
 vcamera_notify g_notify;
 

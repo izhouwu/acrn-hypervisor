@@ -435,7 +435,6 @@ void vcamera_callback_register(int camera_id, vcamera_notify callback);
  * @brief
  *   set the exposure of one camera.
  *
-
  * @param[in]
  *   int camera_id: The camera device index.
  * @param [in]
@@ -445,6 +444,34 @@ void vcamera_callback_register(int camera_id, vcamera_notify callback);
  *   frame size.
  **/
 int vcamera_set_exposure(int camera_id, int millisecond);
+
+/**
+ * @brief
+ *   get supported formats number
+ *
+ * @param[in]
+ *   int camera_id: The camera device index.
+ * @return
+ *   >0  success and return the formats number
+ *   <=0 failed to get formats number
+ **/
+int vcamera_get_formats_number(int camera_id);
+
+/**
+ * @brief
+ *   get all supported formats
+ *
+ * @param[in]
+ *   int camera_id: The camera device index.
+ * @param [out]
+ *   stream_t* p: The addres of stream_t array.
+ * @param [out]
+ *   int* streams_number: The number of supported formats
+ * @return
+ *   <0 error code, failed to get formats
+ **/
+int vcamera_get_formats(int camera_id, stream_t* p, int* streams_number);
+
 #ifdef __cplusplus
 }
 #endif
