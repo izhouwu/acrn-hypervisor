@@ -16,6 +16,7 @@
 #include <sys/eventfd.h>
 #include <acrn_common.h>
 
+#include "monitor.h"
 #include "vm_event.h"
 #include "hsm_ioctl_defs.h"
 #include "sbuf.h"
@@ -66,11 +67,18 @@ static bool started = false;
 
 typedef void (*vm_event_handler)(struct vmctx *ctx, struct vm_event *event);
 
+static void set_rtc_event_handler(struct vmctx *ctx, struct vm_event *event);
+
 static vm_event_handler ve_handler[VM_EVENT_COUNT] = {
-	[VM_EVENT_SET_RTC] = NULL,
+	[VM_EVENT_SET_RTC] = set_rtc_event_handler,
 	[VM_EVENT_POWEROFF] = NULL,
 	[VM_EVENT_TRIPPLE_FAULT] = NULL,
 };
+
+static void set_rtc_event_handler(struct vmctx *ctx, struct vm_event *event)
+{
+	vm_monitor_send_vm_event(event);
+}
 
 static void *vm_event_thread(void *param)
 {
@@ -98,12 +106,12 @@ static void *vm_event_thread(void *param)
 			}
 			tunnel = eventlist[i].data.ptr;
 			if (tunnel && tunnel->enabled) {
-				pr_notice("vm event kicked from %d\n", tunnel->type);
+				//pr_notice("vm event kicked from %d\n", tunnel->type);
 				while (!sbuf_is_empty(tunnel->sbuf)) {
 					sbuf_get(tunnel->sbuf, (uint8_t*)&ve);
 					eventfd_read(tunnel->kick_fd, &val);
-					pr_notice("%ld vm event from%d %d %s\n", val, tunnel->type,
-						ve.type, (char*)ve.event_data);
+					pr_notice("%ld vm event from%d %d\n", val, tunnel->type,
+						ve.type);
 					if (ve.type < VM_EVENT_COUNT && ve_handler[ve.type] != NULL) {
 						(ve_handler[ve.type])(ctx, &ve);
 					} else {

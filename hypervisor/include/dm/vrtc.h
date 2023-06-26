@@ -7,7 +7,7 @@
 #ifndef VRTC_H
 #define VRTC_H
 
-typedef int32_t time_t;
+typedef int64_t time_t;
 
 /* Register layout of the RTC */
 struct rtcdev {
@@ -40,6 +40,7 @@ struct acrn_vrtc {
 	uint64_t	base_tsc;	/* Base tsc value */
 
 	struct rtcdev	rtcdev;		/* RTC register */
+	uint64_t	rtc_out_stat;
 };
 
 #endif /* VRTC_H */

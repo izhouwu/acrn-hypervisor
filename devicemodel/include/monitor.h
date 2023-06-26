@@ -15,6 +15,8 @@
 #ifndef MONITOR_H
 #define MONITOR_H
 
+#include "dm.h"
+
 int monitor_init(struct vmctx *ctx);
 void monitor_close(void);
 
@@ -36,4 +38,7 @@ unsigned get_wakeup_reason(void);
 int set_wakeup_timer(time_t t);
 int acrn_parse_intr_monitor(const char *opt);
 int vm_monitor_blkrescan(void *arg, char *devargs);
+
+int vm_monitor_send_vm_event(struct vm_event *event);
+
 #endif

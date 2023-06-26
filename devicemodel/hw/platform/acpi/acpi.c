@@ -835,6 +835,27 @@ dsdt_fixed_mem32(uint32_t base, uint32_t length)
 	dsdt_line("  )");
 }
 
+#if 0
+static void rtc_write_dsdt(void)
+{
+	dsdt_line("Scope (_SB.PC00)");
+	dsdt_line("{");
+    dsdt_line("  Device (RTC)");
+    dsdt_line("  {");
+    dsdt_line("    Name (_HID, EisaId (\"PNP0B00\") /* AT Real-Time Clock */)  // _HID: Hardware ID");
+    dsdt_line("    Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings");
+    dsdt_line("    {");
+    dsdt_line("        IO (Decode16,");
+    dsdt_line("            0x0070,             // Range Minimum");
+    dsdt_line("            0x0070,             // Range Maximum");
+    dsdt_line("            0x01,               // Alignment");
+    dsdt_line("            0x02,               // Length");
+    dsdt_line("            )");
+    dsdt_line("    })");
+    dsdt_line("  }");
+	dsdt_line("}");
+}
+#endif
 static int
 basl_fwrite_dsdt(FILE *fp, struct vmctx *ctx)
 {
@@ -878,6 +899,8 @@ basl_fwrite_dsdt(FILE *fp, struct vmctx *ctx)
 	dsdt_line("  }");
 
 	acpi_dev_write_dsdt(ctx);
+
+	//rtc_write_dsdt();
 
 	pm_write_dsdt(ctx, basl_ncpu);
 

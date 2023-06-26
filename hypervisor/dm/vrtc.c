@@ -30,6 +30,7 @@
 #include <asm/tsc.h>
 #include <vrtc.h>
 #include <logmsg.h>
+#include <vm_event.h>
 
 #include "mc146818rtc.h"
 
@@ -39,6 +40,11 @@
 #else
 # define RTC_DEBUG(format, ...)      do { } while (false)
 #endif
+
+
+#define U64_MASK(bit) (1UL<<bit)
+#define DATE_TIME_REGS (U64_MASK(RTC_SEC) | U64_MASK(RTC_MIN) | U64_MASK(RTC_HRS) |\
+	U64_MASK(RTC_DAY) | U64_MASK(RTC_MONTH) | U64_MASK(RTC_YEAR) | U64_MASK(RTC_CENTURY))
 
 static time_t vrtc_get_physical_rtc_time(struct acrn_vrtc *vrtc);
 static void vrtc_update_basetime(time_t physical_time, time_t offset);
@@ -538,6 +544,29 @@ static inline bool vrtc_is_time_register(uint32_t offset)
 			|| (offset == RTC_MONTH) || (offset == RTC_YEAR) || (offset == RTC_CENTURY));
 }
 
+static void
+vrtc_send_rtc_chg_event(struct acrn_vm *vm, struct acrn_vrtc *vrtc)
+{
+	struct vm_event event;
+	struct set_rtc_event_data *data = (struct set_rtc_event_data *)event.event_data;
+	time_t newtime = rtc_to_secs(vrtc);
+
+	data->yy = vrtc->rtcdev.year;
+	data->mm = vrtc->rtcdev.month;
+	data->dm = vrtc->rtcdev.day_of_month;
+	data->dw = vrtc->rtcdev.day_of_week;
+	data->hh = vrtc->rtcdev.hour;
+	data->mi = vrtc->rtcdev.min;
+	data->ss = vrtc->rtcdev.sec;
+	data->century = vrtc->rtcdev.century;
+	data->time = newtime;
+
+	event.type = VM_EVENT_SET_RTC;
+
+	//pr_notice("%lld %x %x %x %x %x %x %x %x\n", newtime, data->yy, data->mm, data->dm, data->dw, data->hh, data->mi, data->ss, data->century);
+	send_vm_event(vm, &event);
+}
+
 /**
  * @pre vcpu != NULL
  * @pre vcpu->vm != NULL
@@ -596,6 +625,18 @@ static bool vrtc_write(struct acrn_vcpu *vcpu, uint16_t addr, size_t width,
 				vrtc->last_rtctime = VRTC_BROKEN_TIME;
 				spinlock_release(&vrtc_rebase_lock);
 				break;
+			}
+			if (vrtc->addr < 64) {
+				vrtc->rtc_out_stat |= (0x1UL << vrtc->addr);
+				/* When all date time regs are set, generate a RTC change event. */
+				if ((vrtc->rtc_out_stat & DATE_TIME_REGS) == DATE_TIME_REGS) {
+					struct rtcdev *rtc = &vrtc->rtcdev;
+					vrtc->rtc_out_stat = 0;
+					pr_acrnlog("event trig %x %x %x %x %x %x %x %x\n", 
+						rtc->year, rtc->month, rtc->day_of_month,
+						rtc->hour, rtc->min, rtc->sec, rtc->century);
+					vrtc_send_rtc_chg_event(vcpu->vm, vrtc);
+				}
 			}
 		}
 	}
