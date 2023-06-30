@@ -94,6 +94,52 @@ static struct camera_dev camera_devs[] = {
 	},
 };
 
+#define GET_SYMBOL(handle, p, symbol)           \
+	(p) = (typeof(p))dlsym((handle), (symbol)); \
+	if ((p) == NULL) {                          \
+		goto Error;                             \
+	}                                           \
+	pr_info("find %s\n", (symbol));
+
+static int fill_hal_ops(char* hal_name)
+{
+	g_hal_handle = dlopen(hal_name, RTLD_LAZY);
+	if (g_hal_handle == NULL) {
+		pr_info("Failed to open %s %s\n", hal_name, dlerror());
+	} else {
+		GET_SYMBOL(g_hal_handle, g_hal_ops.get_camera_info, "vcamera_get_camera_info");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.hal_init, "vcamera_hal_init");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.hal_deinit, "vcamera_hal_deinit");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.open, "vcamera_device_open");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.close, "vcamera_device_close");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.config_sensor_input, "vcamera_device_config_sensor_input");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.config_streams, "vcamera_device_config_streams");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.start_stream, "vcamera_device_start");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.stop_stream, "vcamera_device_stop");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.allocate_memory, "vcamera_device_allocate_memory");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.get_frame_size, "vcamera_get_frame_size");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.stream_qbuf, "vcamera_stream_qbuf");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.stream_dqbuf, "vcamera_stream_dqbuf");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.set_parameters, "vcamera_set_parameters");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.get_parameters, "vcamera_get_parameters");
+		return 0;
+	Error:
+		pr_info("Failed to find function in %s %s\n", hal_name, dlerror());
+		dlclose(g_hal_handle);
+		g_hal_handle = NULL;
+	}
+	return -1;
+}
+
+void close_hal_handle()
+{
+	memset(&g_hal_ops, 0, sizeof(g_hal_ops));
+	if (g_hal_handle) {
+		dlclose(g_hal_handle);
+		g_hal_handle = NULL;
+	}
+}
+
 static int virtio_camera_req_bufs(int camera_id)
 {
 	pr_info("virtio_camera %s Enter\n", __func__);
@@ -403,7 +449,7 @@ static void *virtio_dqbuf_thread(void *data)
 				// (fill req to virtqueue)
 				struct capture_buffer *p = STAILQ_FIRST(&camera_devs[camera_id].capture_list);
 				pr_info("vcamera %d DQ a buffer p->idx = %d pdata %p uuid %s\n", camera_id, p->idx,
-					buf->addr, p->uuid);
+						buf->addr, p->uuid);
 
 				vq_relchain(vq, p->idx, sizeof(struct virtio_camera_request));
 				vq_endchains(vq, 0);
@@ -493,7 +539,7 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 			req->u.format.camera_format.height * req->u.format.camera_format.width * 2;
 		response->u.format.camera_format.stride = req->u.format.camera_format.width * 2;
 
-		init_streams(camera_id,V4L2_PIX_FMT_YUYV, req->u.format.camera_format.width,
+		init_streams(camera_id, V4L2_PIX_FMT_YUYV, req->u.format.camera_format.width,
 					 req->u.format.camera_format.height);
 		ret = virtio_camera_wrapper_config_streams(camera_id);
 		pr_info("virtio_camera virtio_camera_wrapper_config_streams ret = %d\n", ret);
@@ -884,8 +930,9 @@ static int virtio_camera_init(struct vmctx *ctx, struct pci_vdev *dev, char *opt
 {
 	struct virtio_camera *vcamera;
 	pthread_mutexattr_t attr;
-	int32_t ret;
 	int i;
+	char *opt;
+	int32_t ret = -1;
 
 	vcamera = calloc(1, sizeof(struct virtio_camera));
 
@@ -893,6 +940,20 @@ static int virtio_camera_init(struct vmctx *ctx, struct pci_vdev *dev, char *opt
 		pr_err(("vcamera init: fail to alloc virtio_camera\n"));
 		return -1;
 	}
+	if (opts != NULL) {
+		opt = opts;
+		if (!strncmp(opt, "vhal", 4)) {
+			(void)strsep(&opt, "=");
+			if (opt != NULL) {
+				if (fill_hal_ops(opt) != 0)
+					pr_err("vcamera init: fill_hal_ops faild\n");
+				else
+					ret = 0;
+			}
+		}
+	}
+	if (ret != 0)
+		pr_err("vcamera init: have no config of vHAL\n");
 
 	/* init mutex attribute properly */
 	int mutexattr_type = virtio_uses_msix() ? PTHREAD_MUTEX_DEFAULT : PTHREAD_MUTEX_RECURSIVE;
@@ -997,6 +1058,7 @@ static void virtio_camera_deinit(struct vmctx* ctx,struct pci_vdev* dev,char* op
 		free(vcamera);
 		dev->arg = NULL;
 	}
+	close_hal_handle();
 }
 
 struct pci_vdev_ops pci_ops_virtio_camera = {
