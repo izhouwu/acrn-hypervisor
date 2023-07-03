@@ -28,8 +28,6 @@
 #include "vmmapi.h"
 #include "vICamera.h"
 
-#define CAMERA_WIDTH 1920
-#define CAMERA_HEIGHT 1080
 #define VIRTIO_CAMERA_MAXSEGS 256
 
 /*
@@ -122,6 +120,8 @@ static int fill_hal_ops(char* hal_name)
 		GET_SYMBOL(g_hal_handle, g_hal_ops.stream_dqbuf, "vcamera_stream_dqbuf");
 		GET_SYMBOL(g_hal_handle, g_hal_ops.set_parameters, "vcamera_set_parameters");
 		GET_SYMBOL(g_hal_handle, g_hal_ops.get_parameters, "vcamera_get_parameters");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.get_formats_number, "vcamera_get_formats_number");
+		GET_SYMBOL(g_hal_handle, g_hal_ops.get_formats, "vcamera_get_formats");
 		return 0;
 	Error:
 		pr_info("Failed to find function in %s %s\n", hal_name, dlerror());
@@ -146,6 +146,24 @@ static int virtio_camera_req_bufs(int camera_id)
 
 	if (camera_devs[camera_id].ops.req_bufs)
 		return camera_devs[camera_id].ops.req_bufs(camera_id);
+	else
+		return -1;
+}
+
+static int virtio_camera_get_formats_number(int camera_id)
+{
+	pr_info("virtio_camera %s Enter\n", __func__);
+	if (camera_devs[camera_id].ops.get_formats_number)
+		return camera_devs[camera_id].ops.get_formats_number(camera_id);
+	else
+		return -1;
+}
+
+static int virtio_camera_get_formats(int camera_id,stream_t* p,int* streams_number)
+{
+	pr_info("virtio_camera %s Enter\n",__func__);
+	if (camera_devs[camera_id].ops.get_formats)
+		return camera_devs[camera_id].ops.get_formats(camera_id,p,streams_number);
 	else
 		return -1;
 }
@@ -503,6 +521,9 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 	int i;
 	int j;
 	int buffer_index;
+	int num_streams;
+	int width;
+	int height;
 	int buffer_count = camera_devs[camera_id].buffer_count;
 	struct capture_buffer* p = NULL;
 	struct v4l2_fmtdesc format_desc = {};
@@ -518,11 +539,18 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		break;
 
 	case VIRTIO_CAMERA_GET_FORMAT:
-		response->u.format.camera_format.width = CAMERA_WIDTH;
-		response->u.format.camera_format.height = CAMERA_HEIGHT;
-		response->u.format.camera_format.stride = CAMERA_WIDTH * 2;
-		response->u.format.pixel_format_type = V4L2_PIX_FMT_YUYV;
-		response->u.format.camera_format.sizeimage = CAMERA_WIDTH * CAMERA_HEIGHT * 2;
+		if(camera_devs[camera_id].stream_list.num_streams > 0) {
+			width = camera_devs[camera_id].stream_list.streams[0].width;
+			height = camera_devs[camera_id].stream_list.streams[0].height;
+			response->u.format.camera_format.width = width;
+			response->u.format.camera_format.height = height;
+			response->u.format.camera_format.stride = width * 2;
+			response->u.format.pixel_format_type = V4L2_PIX_FMT_YUYV;
+			response->u.format.camera_format.sizeimage = width * height * 2;
+		} else {
+			response->type = VIRTIO_CAMERA_RET_INVALID;
+			pr_info("virtio_camera VIRTIO_CAMERA_GET_FORMAT faild\n");
+		}
 		break;
 
 	case VIRTIO_CAMERA_SET_FORMAT:
@@ -543,29 +571,67 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 					 req->u.format.camera_format.height);
 		ret = virtio_camera_wrapper_config_streams(camera_id);
 		pr_info("virtio_camera virtio_camera_wrapper_config_streams ret = %d\n", ret);
+		if (ret != 0) {
+			response->type = VIRTIO_CAMERA_RET_INVALID;
+			pr_info("virtio_camera VIRTIO_CAMERA_SET_FORMAT faild\n");
+		}
 		break;
 
 	case VIRTIO_CAMERA_TRY_FORMAT:
-		response->u.format.camera_format.width = CAMERA_WIDTH;
-		response->u.format.camera_format.height = CAMERA_HEIGHT;
-		response->u.format.camera_format.stride = CAMERA_WIDTH * 2;
-		response->u.format.pixel_format_type = V4L2_PIX_FMT_YUYV;
-		response->u.format.camera_format.sizeimage = CAMERA_WIDTH * CAMERA_HEIGHT * 2;
+		pr_info("virtio camera try format\n");
+		response->u.format.pixel_format_type = req->u.format.pixel_format_type;
+		response->u.format.camera_format.height = req->u.format.camera_format.height;
+		response->u.format.camera_format.width = req->u.format.camera_format.width;
+		response->u.format.camera_format.sizeimage =
+			req->u.format.camera_format.height * req->u.format.camera_format.width * 2;
+		response->u.format.camera_format.stride = req->u.format.camera_format.width * 2;
+
+		init_streams(camera_id, V4L2_PIX_FMT_YUYV, req->u.format.camera_format.width,
+					 req->u.format.camera_format.height);
+		ret = virtio_camera_wrapper_config_streams(camera_id);
+		pr_info("virtio_camera virtio_camera_wrapper_config_streams ret = %d\n", ret);
+		if (ret != 0) {
+			response->type = VIRTIO_CAMERA_RET_INVALID;
+			pr_info("virtio_camera VIRTIO_CAMERA_TRY_FORMAT faild\n");
+		}
 		break;
 
 	case VIRTIO_CAMERA_ENUM_FORMAT:
-		pr_info("virtio_camera req->index %d\n", req->index);
-		format_desc.index = 0;
-		format_desc.pixelformat = V4L2_PIX_FMT_YUYV;
+		pr_info("virtio_camera VIRTIO_CAMERA_ENUM_FORMAT req->index %d\n", req->index);
+		if (req->index == 0) {
+			 num_streams = virtio_camera_get_formats_number(camera_id);
+			 camera_devs[camera_id].supported_stream_list.num_streams = num_streams;
+			 camera_devs[camera_id].supported_stream_list.streams = malloc(sizeof(stream_t) * num_streams);
+			 virtio_camera_get_formats(camera_id,camera_devs[camera_id].supported_stream_list.streams,
+						   &num_streams);
+		} else if (req->index >= camera_devs[camera_id].supported_stream_list.num_streams) {
+			response->type = VIRTIO_CAMERA_RET_INVALID;
+			pr_info("virtio_camera VIRTIO_CAMERA_ENUM_FORMAT faild\n");
+			break;
+		}
+		format_desc.index = req->index;
+		format_desc.pixelformat = camera_devs[camera_id].supported_stream_list.streams[req->index].format;
 		format_desc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		response->u.format.pixel_format_type = format_desc.pixelformat;
 
-		if (req->index >= 1) {
-			response->type = 555;
-			pr_info("virtio_camera return 555\n");
-		}
 		break;
 	case VIRTIO_CAMERA_ENUM_SIZE:
+		pr_info("virtio_camera VIRTIO_CAMERA_ENUM_SIZE req->index %d\n", req->index);
+		if (req->index == 0) {
+			 num_streams = virtio_camera_get_formats_number(camera_id);
+			 camera_devs[camera_id].supported_stream_list.num_streams = num_streams;
+			 camera_devs[camera_id].supported_stream_list.streams = malloc(sizeof(stream_t) * num_streams);
+			 virtio_camera_get_formats(camera_id,camera_devs[camera_id].supported_stream_list.streams,
+						   &num_streams);
+		} else if (req->index >= camera_devs[camera_id].supported_stream_list.num_streams) {
+			response->type = VIRTIO_CAMERA_RET_INVALID;
+			pr_info("virtio_camera VIRTIO_CAMERA_ENUM_FORMAT faild\n");
+			break;
+		}
+		response->u.format.camera_format.width =
+			camera_devs[camera_id].supported_stream_list.streams[req->index].width;
+		response->u.format.camera_format.height =
+			camera_devs[camera_id].supported_stream_list.streams[req->index].height;
 		break;
 
 	case VIRTIO_CAMERA_CREATE_BUFFER:
@@ -1049,6 +1115,10 @@ static void virtio_camera_deinit(struct vmctx* ctx,struct pci_vdev* dev,char* op
 			  vcamera->closing = 1;
 
 		for (index = 0; index < VIRTIO_CAMERA_NUMQ; index++) {
+			if (NULL != camera_devs[index].supported_stream_list.streams) {
+				free(camera_devs[index].supported_stream_list.streams);
+				camera_devs[index].supported_stream_list.streams = NULL;
+			}
 			virtio_camera_close(index);
 			virtio_camera_req_stop(vcamera, index);
 			pthread_mutex_destroy(&vcamera->vq_related[index].req_mutex);

@@ -186,6 +186,8 @@ struct camera_ops {
 	int (*set_parameters)(int camera_id, void *data);
 	int (*get_parameters)(int camera_id, void *data, int64_t sequence);
 	int (*req_bufs)(int camera_id);
+	int (*get_formats_number)(int camera_id);
+	int (*get_formats)(int camera_id, stream_t* p, int* streams_number);
 };
 
 typedef enum _type {
@@ -200,6 +202,7 @@ struct camera_dev {
 	interface_type type;
 	struct camera_ops ops;
 
+	stream_config_t supported_stream_list;
 	stream_config_t stream_list;
 	stream_t streams[1];
 	int stream_state;
