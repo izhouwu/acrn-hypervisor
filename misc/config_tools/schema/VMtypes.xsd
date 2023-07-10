@@ -523,4 +523,37 @@ device file when user config it as virtio serial port, which can be read and wri
   </xs:restriction>
 </xs:simpleType>
 
+<xs:complexType name="VirtualCameraType">
+  <xs:all>
+    <xs:element name="physical_camera_id" type="xs:integer">
+      <xs:annotation acrn:title="Physical Camera ID"
+                     acrn:options="//camera_list/camera/@id"
+                     acrn:options-sorted-by="lambda s: s">
+        <xs:documentation>The Physical Camera index.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+    <xs:element name="resolution" type="xs:string">
+      <xs:annotation acrn:title="Resolution"
+                     acrn:options="for $id in //camera_list/camera/@id return (for $stream_size in //camera[@id = $id]/stream_list/stream_size return concat($id, ': ', $stream_size/width/text(), '*', $stream_size/height/text()))"
+                     acrn:options-sorted-by="lambda s: s">
+        <xs:documentation>The Camera stream size.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+    <xs:element name="virtual_camera_id" type="xs:integer">
+      <xs:annotation acrn:title="Virtual Camera ID">
+        <xs:documentation>The Virtual Camera index.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="VirtioCameraConfiguration">
+  <xs:sequence>
+    <xs:element name="virtual_camera" type="VirtualCameraType" minOccurs="0" maxOccurs="unbounded">
+      <xs:annotation acrn:title="">
+        <xs:documentation>List of a virtual camera's configuration.</xs:documentation>
+      </xs:annotation>
+    </xs:element>
+  </xs:sequence>
+</xs:complexType>
 </xs:schema>

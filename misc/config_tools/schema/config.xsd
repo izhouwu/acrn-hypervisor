@@ -565,6 +565,11 @@ is the virtio network driver, simulating the virtual NIC. The backend could be: 
 ``MacVTap`` device /dev/tapx, or ``vhost`` device /dev/vhost-net</xs:documentation>
             </xs:annotation>
           </xs:element>
+          <xs:element name="camera" type="VirtioCameraConfiguration" minOccurs="0" maxOccurs="1">
+            <xs:annotation acrn:title="Virtio camera device" acrn:views="basic">
+                <xs:documentation>The virtio camera device emulates a virtual camera</xs:documentation>
+            </xs:annotation>
+          </xs:element>
           <xs:element name="input" type="VirtioInputConfiguration" minOccurs="0" maxOccurs="unbounded">
 	        <xs:annotation acrn:title="Virtio input device" acrn:views="basic">
                 <xs:documentation>The virtio input device creates a virtual human interface device such as a keyboard,
