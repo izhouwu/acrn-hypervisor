@@ -186,7 +186,7 @@ static int virtio_camera_wrapper_config_streams(int camera_id)
 		fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		fmt.fmt.pix.width = stream_list->streams[0].width;
 		fmt.fmt.pix.height = stream_list->streams[0].height;
-		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+		fmt.fmt.pix.pixelformat = stream_list->streams[0].format;
 		fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
 		ret = p->ops.set_parameters(camera_id, &fmt);
@@ -270,6 +270,36 @@ static int virtio_camera_stop_stream(int camera_id)
 
 	return -1;
 };
+
+
+static int get_stride_size(int width, int format)
+{
+	int stride;
+
+	switch (format) {
+		case V4L2_PIX_FMT_YUYV:
+		case V4L2_PIX_FMT_YYUV:
+		case V4L2_PIX_FMT_YVYU:
+		case V4L2_PIX_FMT_UYVY:
+		case V4L2_PIX_FMT_VYUY:
+			stride = ALIGN_UP(width * 2, 64);
+			break;
+		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_NV21:
+		        stride = ALIGN_UP(width, 64);
+		        break;
+	        default:
+		        stride = ALIGN_UP(width * 2, 64);
+		        break;
+	}
+
+	return stride;
+}
+
+static int get_frame_size(int width, int height, int format)
+{
+	return get_stride_size(width, format) * height;
+}
 
 int iov_from_buf(struct iovec *iov, uint32_t segment, void *pdata, int size)
 {
@@ -500,13 +530,13 @@ static int init_streams(int camera_id, int format, int width, int height)
 {
 	memset(&camera_devs[camera_id].streams[0], 0, sizeof(stream_t));
 
-	camera_devs[camera_id].streams[0].format = V4L2_PIX_FMT_YUYV;
+	camera_devs[camera_id].streams[0].format = format;
 	camera_devs[camera_id].streams[0].width = width;
 	camera_devs[camera_id].streams[0].height = height;
 	camera_devs[camera_id].streams[0].memType = V4L2_MEMORY_USERPTR;
 	camera_devs[camera_id].streams[0].field = 0;
-	camera_devs[camera_id].streams[0].size = width * height * 2;
-	camera_devs[camera_id].streams[0].stride = width * height * 2;
+	camera_devs[camera_id].streams[0].size = get_frame_size(width, height, format);
+	camera_devs[camera_id].streams[0].stride = get_stride_size(width, format);
 	camera_devs[camera_id].stream_list.num_streams = 1;
 	camera_devs[camera_id].stream_list.streams = camera_devs[camera_id].streams;
 	camera_devs[camera_id].stream_list.operation_mode = 2;
@@ -524,6 +554,7 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 	int num_streams;
 	int width;
 	int height;
+	int format;
 	int buffer_count = camera_devs[camera_id].buffer_count;
 	struct capture_buffer* p = NULL;
 	struct v4l2_fmtdesc format_desc = {};
@@ -542,11 +573,13 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		if(camera_devs[camera_id].stream_list.num_streams > 0) {
 			width = camera_devs[camera_id].stream_list.streams[0].width;
 			height = camera_devs[camera_id].stream_list.streams[0].height;
+			format = camera_devs[camera_id].stream_list.streams[0].format;
+
 			response->u.format.camera_format.width = width;
 			response->u.format.camera_format.height = height;
-			response->u.format.camera_format.stride = width * 2;
-			response->u.format.pixel_format_type = V4L2_PIX_FMT_YUYV;
-			response->u.format.camera_format.sizeimage = width * height * 2;
+			response->u.format.camera_format.stride = get_stride_size(width, format);
+			response->u.format.pixel_format_type = format;
+			response->u.format.camera_format.sizeimage = get_frame_size(width, height, format);
 		} else {
 			response->type = VIRTIO_CAMERA_RET_INVALID;
 			pr_info("virtio_camera VIRTIO_CAMERA_GET_FORMAT faild\n");
@@ -563,11 +596,10 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		response->u.format.pixel_format_type = req->u.format.pixel_format_type;
 		response->u.format.camera_format.height = req->u.format.camera_format.height;
 		response->u.format.camera_format.width = req->u.format.camera_format.width;
-		response->u.format.camera_format.sizeimage =
-			req->u.format.camera_format.height * req->u.format.camera_format.width * 2;
-		response->u.format.camera_format.stride = req->u.format.camera_format.width * 2;
+		response->u.format.camera_format.sizeimage = req->u.format.camera_format.sizeimage;
+		response->u.format.camera_format.stride = req->u.format.camera_format.stride;
 
-		init_streams(camera_id, V4L2_PIX_FMT_YUYV, req->u.format.camera_format.width,
+		init_streams(camera_id, req->u.format.pixel_format_type, req->u.format.camera_format.width,
 					 req->u.format.camera_format.height);
 		ret = virtio_camera_wrapper_config_streams(camera_id);
 		pr_info("virtio_camera virtio_camera_wrapper_config_streams ret = %d\n", ret);
@@ -582,11 +614,10 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		response->u.format.pixel_format_type = req->u.format.pixel_format_type;
 		response->u.format.camera_format.height = req->u.format.camera_format.height;
 		response->u.format.camera_format.width = req->u.format.camera_format.width;
-		response->u.format.camera_format.sizeimage =
-			req->u.format.camera_format.height * req->u.format.camera_format.width * 2;
-		response->u.format.camera_format.stride = req->u.format.camera_format.width * 2;
+		response->u.format.camera_format.sizeimage = req->u.format.camera_format.sizeimage;
+		response->u.format.camera_format.stride = req->u.format.camera_format.stride;
 
-		init_streams(camera_id, V4L2_PIX_FMT_YUYV, req->u.format.camera_format.width,
+		init_streams(camera_id, req->u.format.pixel_format_type, req->u.format.camera_format.width,
 					 req->u.format.camera_format.height);
 		ret = virtio_camera_wrapper_config_streams(camera_id);
 		pr_info("virtio_camera virtio_camera_wrapper_config_streams ret = %d\n", ret);
