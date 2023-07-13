@@ -91,7 +91,7 @@ LIBS += -lSDL2
 LIBS += -lEGL
 LIBS += -lGLESv2
 LIBS += -lasound
-
+LIBS += -ldl
 
 # lib
 SRCS += lib/dm_string.c
