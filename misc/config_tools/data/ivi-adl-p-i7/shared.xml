@@ -63,6 +63,7 @@
     <vm_type>STANDARD_VM</vm_type>
     <console_vuart>COM Port 1</console_vuart>
     <os_type>Non-Windows OS</os_type>
+    <own_pcpu>y</own_pcpu>
     <vuart0>n</vuart0>
     <vbootloader>y</vbootloader>
     <memory>

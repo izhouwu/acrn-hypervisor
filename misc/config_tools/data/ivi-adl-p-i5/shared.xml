@@ -64,6 +64,7 @@
     <console_vuart>COM Port 1</console_vuart>
     <os_type>Non-Windows OS</os_type>
     <vuart0>n</vuart0>
+    <own_pcpu>y</own_pcpu>
     <vbootloader>y</vbootloader>
     <memory>
       <size>12288</size>
