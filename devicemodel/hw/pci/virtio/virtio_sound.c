@@ -1837,8 +1837,12 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 	if (strspn(card_str, "0123456789") == strlen(card_str)) {
 		idx = snd_card_get_index(card_str);
 		if (idx >= 0 && idx < 32)
-#if defined(SND_LIB_VER) && SND_LIB_VER(1, 2, 5) <= SND_LIB_VERSION
+#if defined(SND_LIB_VER)
+#if SND_LIB_VER(1, 2, 5) <= SND_LIB_VERSION
 			snprintf(card, VIRTIO_SOUND_CARD_NAME, "sysdefault:%i", idx);
+#else
+			snprintf(card, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
+#endif
 #else
 			snprintf(card, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
 #endif
