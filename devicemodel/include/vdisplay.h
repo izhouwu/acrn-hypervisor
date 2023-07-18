@@ -92,6 +92,7 @@ int vdpy_init(int *num_vscreens);
 void vdpy_get_display_info(int handle, int scanout_id, struct display_info *info);
 void vdpy_surface_set(int handle, int scanout_id, struct surface *surf);
 void vdpy_surface_update(int handle, int scanout_id, struct surface *surf);
+void vdpy_set_modifier(int handle, int scanout_id, uint64_t modifier);
 bool vdpy_submit_bh(int handle, struct vdpy_display_bh *bh);
 void vdpy_get_edid(int handle, int scanout_id, uint8_t *edid, size_t size);
 void vdpy_cursor_define(int handle, int scanout_id, struct cursor *cur);

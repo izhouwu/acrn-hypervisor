@@ -51,12 +51,14 @@
 #define VIRTIO_GPU_F_RESOURCE_UUID	2
 #define VIRTIO_GPU_F_RESOURCE_BLOB	3
 #define VIRTIO_GPU_F_CONTEXT_INIT	4
+#define VIRTIO_GPU_F_MODIFIER		5
 
 /*
  * Host capabilities
  */
 #define VIRTIO_GPU_S_HOSTCAPS	(1UL << VIRTIO_F_VERSION_1) | \
-				(1UL << VIRTIO_GPU_F_EDID)
+				(1UL << VIRTIO_GPU_F_EDID) | \
+				(1UL << VIRTIO_GPU_F_MODIFIER)
 
 
 
@@ -113,6 +115,7 @@ enum virtio_gpu_ctrl_type {
 	VIRTIO_GPU_CMD_RESOURCE_ASSIGN_UUID,
 	VIRTIO_GPU_CMD_RESOURCE_CREATE_BLOB,
 	VIRTIO_GPU_CMD_SET_SCANOUT_BLOB,
+	VIRTIO_GPU_CMD_SET_MODIFIER,
 
 	/* cursor commands */
 	VIRTIO_GPU_CMD_UPDATE_CURSOR = 0x0300,
@@ -342,6 +345,14 @@ struct virtio_gpu_set_scanout_blob {
 	uint32_t padding;
 	uint32_t strides[4];
 	uint32_t offsets[4];
+};
+
+/* VIRTIO_GPU_CMD_SET_MODIFIER */
+struct virtio_gpu_set_modifier {
+	struct virtio_gpu_ctrl_hdr hdr;
+	uint64_t modifier;
+	uint32_t scanout_id;
+	uint32_t padding;
 };
 
 enum vga_thread_status {
@@ -1323,6 +1334,30 @@ virtio_gpu_cmd_create_blob(struct virtio_gpu_command *cmd)
 }
 
 static void
+virtio_gpu_cmd_set_modifier(struct virtio_gpu_command *cmd)
+{
+	struct virtio_gpu_set_modifier req;
+	struct virtio_gpu_ctrl_hdr resp;
+	struct virtio_gpu *gpu;
+
+	gpu = cmd->gpu;
+	memcpy(&req, cmd->iov[0].iov_base, sizeof(req));
+	cmd->iolen = sizeof(resp);
+	memset(&resp, 0, sizeof(resp));
+
+	if (cmd->iovcnt < 2) {
+		pr_err("%s : invalid memory entry.\n", __func__);
+		resp.type = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
+	} else {
+		vdpy_set_modifier(gpu->vdpy_handle, req.scanout_id, req.modifier);
+		resp.type = VIRTIO_GPU_RESP_OK_NODATA;
+	}
+
+	memcpy(cmd->iov[cmd->iovcnt - 1].iov_base, &resp, sizeof(resp));
+	return;
+}
+
+static void
 virtio_gpu_cmd_set_scanout_blob(struct virtio_gpu_command *cmd)
 {
 	struct virtio_gpu_set_scanout_blob req;
@@ -1481,6 +1516,9 @@ virtio_gpu_ctrl_bh(void *data)
 				break;
 			}
 			virtio_gpu_cmd_set_scanout_blob(&cmd);
+			break;
+		case VIRTIO_GPU_CMD_SET_MODIFIER:
+			virtio_gpu_cmd_set_modifier(&cmd);
 			break;
 		default:
 			virtio_gpu_cmd_unspec(&cmd);

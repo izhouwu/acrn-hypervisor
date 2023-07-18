@@ -67,6 +67,7 @@ struct vscreen {
 	int guest_height;
 	struct surface surf;
 	struct cursor cur;
+	uint64_t modifier;
 	SDL_Texture *surf_tex;
 	SDL_Texture *cur_tex;
 	SDL_Texture *bogus_tex;
@@ -686,6 +687,19 @@ static void sdl_gl_prepare_draw(struct vscreen *vscr)
 }
 
 void
+vdpy_set_modifier(int handle, int scanout_id, uint64_t modifier)
+{
+	struct vscreen *vscr;
+
+	if (scanout_id >= vdpy.vscrs_num) {
+		return;
+	}
+
+	vscr = vdpy.vscrs + scanout_id;
+	vscr->modifier = modifier;
+}
+
+void
 vdpy_surface_set(int handle, int scanout_id, struct surface *surf)
 {
 	pixman_image_t *src_img;
@@ -811,6 +825,12 @@ vdpy_surface_set(int handle, int scanout_id, struct surface *surf)
 		attrs[i++] = surf->stride;
 		attrs[i++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
 		attrs[i++] = surf->dma_info.dmabuf_offset;
+		if (vscr->modifier) {
+			attrs[i++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+			attrs[i++] = vscr->modifier & 0xffffffff;
+			attrs[i++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+			attrs[i++] = (vscr->modifier & 0xffffffff00000000) >> 32;
+		}
 		attrs[i++] = EGL_NONE;
 
 		egl_img = gl_ops->eglCreateImageKHR(vdpy.eglDisplay,
