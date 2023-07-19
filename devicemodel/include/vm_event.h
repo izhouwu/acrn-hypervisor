@@ -14,6 +14,6 @@
 int vm_init_vm_event(struct vmctx *ctx);
 int vm_event_deinit(void);
 /* Put vm event to sbuf. For vm event thread to transmit out. */
-int send_dm_vm_event(struct vm_event *event);
+int dm_send_vm_event(struct vm_event *event);
 
 #endif /* VM_EVENT_H */

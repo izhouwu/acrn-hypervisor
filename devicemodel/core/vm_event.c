@@ -67,18 +67,22 @@ static bool started = false;
 
 typedef void (*vm_event_handler)(struct vmctx *ctx, struct vm_event *event);
 
-static void set_rtc_event_handler(struct vmctx *ctx, struct vm_event *event);
-
-static vm_event_handler ve_handler[VM_EVENT_COUNT] = {
-	[VM_EVENT_SET_RTC] = set_rtc_event_handler,
-	[VM_EVENT_POWEROFF] = NULL,
-	[VM_EVENT_TRIPPLE_FAULT] = NULL,
-};
-
-static void set_rtc_event_handler(struct vmctx *ctx, struct vm_event *event)
+static void general_event_handler(struct vmctx *ctx, struct vm_event *event)
 {
 	vm_monitor_send_vm_event(event);
 }
+
+static void poweroff_event_handler(struct vmctx *ctx, struct vm_event *event)
+{
+	vm_monitor_send_vm_event(event);
+}
+
+static vm_event_handler ve_handler[VM_EVENT_COUNT] = {
+	[VM_EVENT_SET_RTC] = general_event_handler,
+	[VM_EVENT_POWEROFF] = poweroff_event_handler,
+	[VM_EVENT_TRIPPLE_FAULT] = NULL,
+};
+
 
 static void *vm_event_thread(void *param)
 {
@@ -240,7 +244,7 @@ int vm_event_deinit(void)
 	return 0;
 }
 
-int send_dm_vm_event(struct vm_event *event)
+int dm_send_vm_event(struct vm_event *event)
 {
 	struct vm_event_tunnel *tunnel = &ve_tunnel[DM_VM_EVENT_TUNNEL];
 	struct shared_buf *sbuf;

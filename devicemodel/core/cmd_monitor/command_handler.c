@@ -155,7 +155,7 @@ static char *generate_vm_event_message(struct vm_event *event)
 	}
 
 	if(i >= ARRAY_SIZE(trans)) {
-		goto fail_out;
+		goto out;
 	}
 
 	for (j = 0; j < MAX_ELEMENT_NUM; j ++) {
@@ -191,10 +191,11 @@ static char *generate_vm_event_message(struct vm_event *event)
 		}
 
 	}
+out:
 	event_msg = cJSON_Print(event_obj);
 	if (event_msg == NULL)
 		fprintf(stderr, "Failed to generate vm_event message.\n");
-fail_out:
+
 	cJSON_Delete(event_obj);
 	return event_msg;
 }
@@ -205,6 +206,7 @@ int vm_monitor_send_vm_event(struct vm_event *event)
 	struct socket_client *client;
 	char *msg = generate_vm_event_message(event);
 	if (msg == NULL) {
+		pr_err("%s: failed to generate vm_event msg\n", __func__);
 		return -1;
 	}
 

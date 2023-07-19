@@ -743,7 +743,7 @@ vrtc_send_rtc_chg_event(struct vrtc *vrtc)
 	event.type = VM_EVENT_SET_RTC;
 
 	pr_notice("%lld %x %x %x %x %x %x %x %x\n", newtime, data->yy, data->mm, data->dm, data->dw, data->hh, data->mi, data->ss, data->century);
-	send_dm_vm_event(&event);
+	dm_send_vm_event(&event);
 }
 
 static int
@@ -908,7 +908,7 @@ vrtc_addr_handler(struct vmctx *ctx, int vcpu, int in, int port,
 	//snprintf((char*)ve.event_data, 28, 
 	//	"vrtc in%d port%d %d", in, port, *eax);
 
-	//send_dm_vm_event(&ve);
+	//dm_send_vm_event(&ve);
 
 	if (bytes != 1)
 		return -1;
