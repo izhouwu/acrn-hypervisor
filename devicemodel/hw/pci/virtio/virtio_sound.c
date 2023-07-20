@@ -143,16 +143,15 @@ struct virtio_sound_pcm {
 };
 
 struct vbs_ctl_elem {
-	// todo: Use snd_hctl_elem_t instead.
-	char identifier[VIRTIO_SOUND_IDENTIFIER];
-	char card[VIRTIO_SOUND_CARD_NAME];
+	snd_hctl_elem_t *elem;
+	struct vbs_card *card;
 };
 
 struct vbs_jack_elem {
-	char identifier[VIRTIO_SOUND_IDENTIFIER];
-	char card[VIRTIO_SOUND_CARD_NAME];
+	snd_hctl_elem_t *elem;
 	uint32_t hda_reg_defconf;
 	uint32_t connected;
+	struct vbs_card *card;
 };
 
 struct vbs_card {
@@ -190,6 +189,7 @@ struct virtio_sound {
 
 static int virtio_sound_cfgread(void *vdev, int offset, int size, uint32_t *retval);
 static int virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *event);
+static int virtio_sound_event_callback(snd_hctl_elem_t *helem, unsigned int mask);
 
 static struct virtio_sound *vsound = NULL;
 
@@ -705,10 +705,9 @@ static void virtio_sound_update_iov_cnt(struct virtio_sound *virt_snd, int dir) 
 }
 
 static snd_hctl_elem_t *
-virtio_sound_get_ctl_elem(char *card, char *identifier)
+virtio_sound_get_ctl_elem(snd_hctl_t *hctl, char *identifier)
 {
 	snd_ctl_elem_id_t *id;
-	snd_hctl_t *hctl;
 	snd_hctl_elem_t *elem;
 
 	snd_ctl_elem_id_alloca(&id);
@@ -716,53 +715,31 @@ virtio_sound_get_ctl_elem(char *card, char *identifier)
 		WPRINTF("%s: wrong identifier %s!\n", __func__, identifier);
 		return NULL;
 	}
-	if (snd_hctl_open(&hctl, card, 0) < 0) {
-		WPRINTF("%s: hctl open fail, card %s!\n", __func__, card);
-		goto err;
-	}
-	if (snd_hctl_load(hctl) < 0) {
-		WPRINTF("%s: hctl load fail, card %s!\n", __func__, card);
-		goto err;
-	}
 	if ((elem = snd_hctl_find_elem(hctl, id)) == NULL) {
 		WPRINTF("%s: find elem fail, identifier is %s!\n", __func__, identifier);
-		goto err;
+		return NULL;
 	}
 	return elem;
-
-err:
-	if (hctl != NULL)
-		snd_hctl_close(hctl);
-	return NULL;
 }
 
 static int
-virtio_sound_get_jack_value(char *card, char *identifier)
+virtio_sound_get_jack_value(snd_hctl_elem_t *elem)
 {
-	snd_hctl_elem_t *elem;
 	snd_ctl_elem_info_t *ctl;
 	snd_ctl_elem_value_t *ctl_value;
 	int value;
 
-	elem = virtio_sound_get_ctl_elem(card, identifier);
-	if (elem == NULL) {
-		WPRINTF("%s: get %s ctl elem fail!\n", __func__, identifier);
-		return -1;
-	}
 	snd_ctl_elem_info_alloca(&ctl);
 	if (snd_hctl_elem_info(elem, ctl) < 0 || snd_ctl_elem_info_is_readable(ctl) == 0) {
-		WPRINTF("%s: access check fail, identifier is %s!\n", __func__, identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: access check fail, identifier is %s!\n", __func__, snd_hctl_elem_get_name(elem));
 		return -1;
 	}
 	snd_ctl_elem_value_alloca(&ctl_value);
 	if (snd_hctl_elem_read(elem, ctl_value) < 0) {
-		WPRINTF("%s: read %s value fail!\n", __func__, identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: read %s value fail!\n", __func__, snd_hctl_elem_get_name(elem));
 		return -1;
 	}
 	value = snd_ctl_elem_value_get_boolean(ctl_value, 0);
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 	return value;
 }
 
@@ -1173,17 +1150,10 @@ virtio_sound_r_ctl_info(struct virtio_sound *virt_snd, struct iovec *iov, uint8_
 	snd_ctl_elem_info_alloca(&ctl);
 	c = info->start_id;
 	for (i = 0; i < info->count; i++) {
-		elem = virtio_sound_get_ctl_elem(virt_snd->ctls[c]->card,
-			virt_snd->ctls[c]->identifier);
-		if (elem == NULL) {
-			WPRINTF("%s: get %s ctl elem fail!\n", __func__, virt_snd->ctls[c]->identifier);
-			ret->code = VIRTIO_SND_S_BAD_MSG;
-			return (int)iov[1].iov_len;
-		}
+		elem = virt_snd->ctls[c]->elem;
 		if (snd_hctl_elem_info(elem, ctl) < 0) {
 			WPRINTF("%s: find elem info fail, identifier is %s!\n", __func__,
-				virt_snd->ctls[c]->identifier);
-			snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+				snd_hctl_elem_get_name(virt_snd->ctls[c]->elem));
 			ret->code = VIRTIO_SND_S_BAD_MSG;
 			return (int)iov[1].iov_len;
 		}
@@ -1213,7 +1183,6 @@ virtio_sound_r_ctl_info(struct virtio_sound *virt_snd, struct iovec *iov, uint8_
 			default:
 				break;
 		}
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 		c++;
 	}
 
@@ -1228,7 +1197,6 @@ virtio_sound_r_ctl_enum_items(struct virtio_sound *virt_snd, struct iovec *iov, 
 	snd_hctl_elem_t *elem;
 	snd_ctl_elem_info_t *ctl;
 	struct virtio_snd_hdr *ret = iov[1].iov_base;
-	char *identifier;
 	int items, i;
 
 	if (n != 3) {
@@ -1241,45 +1209,38 @@ virtio_sound_r_ctl_enum_items(struct virtio_sound *virt_snd, struct iovec *iov, 
 		return (int)iov[1].iov_len;
 	}
 
-	identifier = virt_snd->ctls[info->control_id]->identifier;
 	snd_ctl_elem_info_alloca(&ctl);
-	elem = virtio_sound_get_ctl_elem(virt_snd->ctls[info->control_id]->card, identifier);
-	if (elem == NULL) {
-		WPRINTF("%s: get %s ctl elem fail!\n", __func__, identifier);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[1].iov_len;
-	}
+	elem = virt_snd->ctls[info->control_id]->elem;
 	if (snd_hctl_elem_info(elem, ctl) < 0) {
-		WPRINTF("%s: get elem info fail, identifier is %s!\n", __func__, identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: get elem info fail, identifier is %s!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	if (snd_ctl_elem_info_get_type(ctl) != SND_CTL_ELEM_TYPE_ENUMERATED) {
-		WPRINTF("%s: elem is not enumerated, identifier is %s!\n", __func__, identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: elem is not enumerated, identifier is %s!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	items = snd_ctl_elem_info_get_items(ctl);
 	if (items != (iov[2].iov_len / sizeof(struct virtio_snd_ctl_enum_item))) {
-		WPRINTF("%s: %s item count(%d) err!\n", __func__, identifier, items);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: %s item count(%d) err!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem), items);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	for(i = 0; i < items; i++) {
 		snd_ctl_elem_info_set_item(ctl, i);
 		if (snd_hctl_elem_info(elem, ctl) < 0) {
-			WPRINTF("%s: %s get item %d err!\n", __func__, identifier, i);
-			snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			WPRINTF("%s: %s get item %d err!\n", __func__,
+				snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem), i);
 			ret->code = VIRTIO_SND_S_BAD_MSG;
 			return (int)iov[1].iov_len;
 		}
 		strncpy((iov[2].iov_base + sizeof(struct virtio_snd_ctl_enum_item) * i),
 			snd_ctl_elem_info_get_item_name(ctl), sizeof(struct virtio_snd_ctl_enum_item));
 	}
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	ret->code = VIRTIO_SND_S_OK;
 	return (int)iov[2].iov_len + (int)iov[1].iov_len;
@@ -1304,31 +1265,23 @@ virtio_sound_r_ctl_read(struct virtio_sound *virt_snd, struct iovec *iov, uint8_
 		return (int)iov[1].iov_len;
 	}
 
-	elem = virtio_sound_get_ctl_elem(virt_snd->ctls[info->control_id]->card,
-		virt_snd->ctls[info->control_id]->identifier);
-	if (elem == NULL) {
-		WPRINTF("%s: get %s ctl elem fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[1].iov_len;
-	}
+	elem = virt_snd->ctls[info->control_id]->elem;
 	snd_ctl_elem_info_alloca(&ctl);
 	if (snd_hctl_elem_info(elem, ctl) < 0 || snd_ctl_elem_info_is_readable(ctl) == 0) {
 		WPRINTF("%s: access check fail, identifier is %s!\n", __func__,
-			virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	snd_ctl_elem_value_alloca(&ctl_value);
 	if (snd_hctl_elem_read(elem, ctl_value) < 0) {
-		WPRINTF("%s: read %s value fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: read %s value fail!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	memcpy(iov[1].iov_base + sizeof(struct virtio_snd_hdr), snd_ctl_elem_value_get_bytes(ctl_value),
 		iov[1].iov_len - sizeof(struct virtio_snd_hdr));
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	ret->code = VIRTIO_SND_S_OK;
 	return (int)iov[1].iov_len;
@@ -1355,36 +1308,28 @@ virtio_sound_r_ctl_write(struct virtio_sound *virt_snd, struct iovec *iov, uint8
 		return (int)iov[1].iov_len;
 	}
 
-	elem = virtio_sound_get_ctl_elem(virt_snd->ctls[info->control_id]->card,
-		virt_snd->ctls[info->control_id]->identifier);
-	if (elem == NULL) {
-		WPRINTF("%s: get %s ctl elem fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[1].iov_len;
-	}
+	elem = virt_snd->ctls[info->control_id]->elem;
 	snd_ctl_elem_info_alloca(&ctl);
 	if (snd_hctl_elem_info(elem, ctl) < 0 || snd_ctl_elem_info_is_writable(ctl) == 0) {
 		WPRINTF("%s: access check fail, identifier is %s!\n", __func__,
-			virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	snd_ctl_elem_value_alloca(&ctl_value);
 	if (snd_hctl_elem_read(elem, ctl_value) < 0) {
-		WPRINTF("%s: read %s value fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: read %s value fail!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	snd_ctl_elem_set_bytes(ctl_value, val, sizeof(struct virtio_snd_ctl_value));
 	if (snd_hctl_elem_write(elem, ctl_value) < 0) {
-		WPRINTF("%s: write %s value fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: write %s value fail!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	ret->code = VIRTIO_SND_S_OK;
 	return (int)iov[1].iov_len;
@@ -1409,28 +1354,20 @@ virtio_sound_r_ctl_tlv_read(struct virtio_sound *virt_snd, struct iovec *iov, ui
 		return (int)iov[1].iov_len;
 	}
 
-	elem = virtio_sound_get_ctl_elem(virt_snd->ctls[info->control_id]->card,
-		virt_snd->ctls[info->control_id]->identifier);
-	if (elem == NULL) {
-		WPRINTF("%s: get %s ctl elem fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[1].iov_len;
-	}
+	elem = virt_snd->ctls[info->control_id]->elem;
 	snd_ctl_elem_info_alloca(&ctl);
 	if (snd_hctl_elem_info(elem, ctl) < 0 || snd_ctl_elem_info_is_tlv_readable(ctl) == 0) {
 		WPRINTF("%s: access check fail, identifier is %s!\n", __func__,
-			virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	if (snd_hctl_elem_tlv_read(elem, iov[2].iov_base, iov[2].iov_len / sizeof(int)) < 0) {
-		WPRINTF("%s: read %s tlv fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: read %s tlv fail!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	ret->code = VIRTIO_SND_S_OK;
 	return iov[2].iov_len + iov[1].iov_len;
@@ -1455,28 +1392,20 @@ virtio_sound_r_ctl_tlv_write(struct virtio_sound *virt_snd, struct iovec *iov, u
 		return (int)iov[2].iov_len;
 	}
 
-	elem = virtio_sound_get_ctl_elem(virt_snd->ctls[info->control_id]->card,
-		virt_snd->ctls[info->control_id]->identifier);
-	if (elem == NULL) {
-		WPRINTF("%s: get %s ctl elem fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[2].iov_len;
-	}
+	elem = virt_snd->ctls[info->control_id]->elem;
 	snd_ctl_elem_info_alloca(&ctl);
 	if (snd_hctl_elem_info(elem, ctl) < 0 || snd_ctl_elem_info_is_tlv_writable(ctl) == 0) {
 		WPRINTF("%s: access check fail, identifier is %s!\n", __func__,
-			virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[2].iov_len;
 	}
 	if (snd_hctl_elem_tlv_write(elem, tlv) < 0) {
-		WPRINTF("%s: write %s tlv fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: write %s tlv fail!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[2].iov_len;
 	}
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	ret->code = VIRTIO_SND_S_OK;
 	return (int)iov[2].iov_len;
@@ -1501,28 +1430,20 @@ virtio_sound_r_ctl_tlv_command(struct virtio_sound *virt_snd, struct iovec *iov,
 		return (int)iov[2].iov_len;
 	}
 
-	elem = virtio_sound_get_ctl_elem(virt_snd->ctls[info->control_id]->card,
-		virt_snd->ctls[info->control_id]->identifier);
-	if (elem == NULL) {
-		WPRINTF("%s: get %s ctl elem fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[2].iov_len;
-	}
+	elem = virt_snd->ctls[info->control_id]->elem;
 	snd_ctl_elem_info_alloca(&ctl);
 	if (snd_hctl_elem_info(elem, ctl) < 0 || snd_ctl_elem_info_is_tlv_commandable(ctl) == 0) {
 		WPRINTF("%s: access check fail, identifier is %s!\n", __func__,
-				virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[2].iov_len;
 	}
 	if (snd_hctl_elem_tlv_command(elem, tlv) < 0) {
-		WPRINTF("%s: %s tlv command fail!\n", __func__, virt_snd->ctls[info->control_id]->identifier);
-		snd_hctl_close(snd_hctl_elem_get_hctl(elem));
+		WPRINTF("%s: %s tlv command fail!\n", __func__,
+			snd_hctl_elem_get_name(virt_snd->ctls[info->control_id]->elem));
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[2].iov_len;
 	}
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	ret->code = VIRTIO_SND_S_OK;
 	return (int)iov[2].iov_len;
@@ -1804,28 +1725,38 @@ virtio_snd_jack_parse(char *identifier)
 	return (device << HDA_JACK_DEFREG_DEVICE_SHIFT) | (location << HDA_JACK_DEFREG_LOCATION_SHIFT);
 }
 
-static int
-virtio_sound_set_card(struct virtio_sound *virt_snd, char *card)
+static struct vbs_card*
+virtio_sound_get_card(struct virtio_sound *virt_snd, char *card)
 {
-	int i;
+	int i, num;
 
 	for (i = 0; i < virt_snd->card_cnt; i++) {
 		if(strcmp(virt_snd->cards[i]->card, card) == 0) {
-			return 0;
+			return virt_snd->cards[i];
 		}
 	}
 	if (virt_snd->card_cnt >= VIRTIO_SOUND_CARD) {
 		WPRINTF("%s: too many cards %d!\n", __func__, virt_snd->card_cnt);
-		return -1;
+		return NULL;
 	}
-	virt_snd->cards[virt_snd->card_cnt] = malloc(sizeof(struct vbs_card));
-	if (virt_snd->cards[virt_snd->card_cnt] == NULL) {
-		WPRINTF("%s: malloc card node %d fail!\n", __func__, i);
-		return -1;
+	num = virt_snd->card_cnt;
+	virt_snd->cards[num] = malloc(sizeof(struct vbs_card));
+	if (virt_snd->cards[num] == NULL) {
+		WPRINTF("%s: malloc card node %d fail!\n", __func__, num);
+		return NULL;
 	}
-	strncpy(virt_snd->cards[virt_snd->card_cnt]->card, card, VIRTIO_SOUND_CARD_NAME);
+	strncpy(virt_snd->cards[num]->card, card, VIRTIO_SOUND_CARD_NAME);
+	if (snd_hctl_open(&virt_snd->cards[num]->handle, virt_snd->cards[num]->card, 0)) {
+		WPRINTF("%s: hctl open fail, card %s!\n", __func__, virt_snd->cards[num]->card);
+		return NULL;
+	}
+	if (snd_hctl_load(virt_snd->cards[num]->handle) < 0) {
+		WPRINTF("%s: hctl load fail, card %s!\n", __func__, virt_snd->cards[num]->card);
+		snd_hctl_close(virt_snd->cards[num]->handle);
+		return NULL;
+	}
 	virt_snd->card_cnt++;
-	return 0;
+	return virt_snd->cards[num];
 }
 
 static int
@@ -1833,7 +1764,9 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 {
 	snd_ctl_elem_info_t *info;
 	snd_hctl_elem_t *elem;
-	char card[VIRTIO_SOUND_CARD_NAME];
+
+	struct vbs_card *card;
+	char card_name[VIRTIO_SOUND_CARD_NAME];
 	int idx;
 
 	if (strspn(card_str, "0123456789") == strlen(card_str)) {
@@ -1841,27 +1774,28 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 		if (idx >= 0 && idx < 32)
 #if defined(SND_LIB_VER)
 #if SND_LIB_VER(1, 2, 5) <= SND_LIB_VERSION
-			snprintf(card, VIRTIO_SOUND_CARD_NAME, "sysdefault:%i", idx);
+			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "sysdefault:%i", idx);
 #else
-			snprintf(card, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
+			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
 #endif
 #else
-			snprintf(card, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
+			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
 #endif
 		else {
 			WPRINTF("%s: card(%s) err, get %s ctl elem fail!\n", __func__, card_str, identifier);
 			return -1;
 		}
 	} else {
-		strncpy(card, card_str, VIRTIO_SOUND_CARD_NAME);
+		strncpy(card_name, card_str, VIRTIO_SOUND_CARD_NAME);
 	}
-	if(virtio_sound_set_card(virt_snd, card) != 0) {
-		WPRINTF("%s: set card(%s) fail!\n", __func__, card);
+	card = virtio_sound_get_card(virt_snd, card_name);
+	if(card == NULL) {
+		WPRINTF("%s: set card(%s) fail!\n", __func__, card_name);
 		return -1;
 	}
 	snd_ctl_elem_info_alloca(&info);
 
-	elem = virtio_sound_get_ctl_elem(card, identifier);
+	elem = virtio_sound_get_ctl_elem(card->handle, identifier);
 	if (elem == NULL) {
 		WPRINTF("%s: get %s ctl elem fail!\n", __func__, identifier);
 		return -1;
@@ -1870,26 +1804,25 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 		virt_snd->jacks[virt_snd->jack_cnt] = malloc(sizeof(struct vbs_jack_elem));
 		if (virt_snd->jacks[virt_snd->jack_cnt] == NULL) {
 			WPRINTF("%s: malloc jack elem fail!\n", __func__);
-			snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 			return -1;
 		}
-		strncpy(virt_snd->jacks[virt_snd->jack_cnt]->card, card, VIRTIO_SOUND_CARD_NAME);
-		strncpy(virt_snd->jacks[virt_snd->jack_cnt]->identifier, identifier, VIRTIO_SOUND_CARD_NAME);
+		virt_snd->jacks[virt_snd->jack_cnt]->elem = elem;
+		virt_snd->jacks[virt_snd->jack_cnt]->card = card;
 		virt_snd->jacks[virt_snd->jack_cnt]->hda_reg_defconf = virtio_snd_jack_parse(identifier);
-		virt_snd->jacks[virt_snd->jack_cnt]->connected = virtio_sound_get_jack_value(card, identifier);
+		virt_snd->jacks[virt_snd->jack_cnt]->connected = virtio_sound_get_jack_value(elem);
+		snd_hctl_elem_set_callback(elem, virtio_sound_event_callback);
 		virt_snd->jack_cnt++;
 	} else {
 		virt_snd->ctls[virt_snd->ctl_cnt] = malloc(sizeof(struct vbs_ctl_elem));
 		if (virt_snd->ctls[virt_snd->ctl_cnt] == NULL) {
 			WPRINTF("%s: malloc ctl elem fail!\n", __func__);
-			snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 			return -1;
 		}
-		strncpy(virt_snd->ctls[virt_snd->ctl_cnt]->card, card, VIRTIO_SOUND_CARD_NAME);
-		strncpy(virt_snd->ctls[virt_snd->ctl_cnt]->identifier, identifier, VIRTIO_SOUND_CARD_NAME);
+		virt_snd->ctls[virt_snd->ctl_cnt]->elem = elem;
+		virt_snd->ctls[virt_snd->ctl_cnt]->card = card;
+		snd_hctl_elem_set_callback(elem, virtio_sound_event_callback);
 		virt_snd->ctl_cnt++;
 	}
-	snd_hctl_close(snd_hctl_elem_get_hctl(elem));
 
 	return 0;
 }
@@ -1987,10 +1920,8 @@ virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *
 static int
 virtio_sound_event_callback(snd_hctl_elem_t *helem, unsigned int mask)
 {
-	snd_ctl_elem_id_t *id;
 	struct virtio_sound *virt_snd = virtio_sound_get_device();
 	struct virtio_snd_event event;
-	char *str;
 	int i;
 
 	/*
@@ -2000,16 +1931,13 @@ virtio_sound_event_callback(snd_hctl_elem_t *helem, unsigned int mask)
 	if (virt_snd->status == VIRTIO_SND_BE_DEINITED)
 		return 0;
 
-	snd_ctl_elem_id_alloca(&id);
-	snd_hctl_elem_get_id(helem, id);
-	str = snd_ctl_ascii_elem_id_get(id);
-	if (strstr(str, "Jack")) {
+	if (strstr(snd_hctl_elem_get_name(helem), "Jack")) {
 		for (i = 0; i < virt_snd->jack_cnt; i++) {
-			// todo: Use snd_hctl_elem_t instead.
-			if (strcmp(str, virt_snd->jacks[i]->identifier) == 0) {
-				virt_snd->jacks[i]->connected = virtio_sound_get_jack_value(virt_snd->jacks[i]->card, virt_snd->jacks[i]->identifier);
+			if (helem == virt_snd->jacks[i]->elem) {
+				virt_snd->jacks[i]->connected = virtio_sound_get_jack_value(virt_snd->jacks[i]->elem);
 				if (virt_snd->jacks[i]->connected < 0) {
-					WPRINTF("%s: Jack %s read value fail!\n", __func__, str);
+					WPRINTF("%s: Jack %s read value fail!\n", __func__,
+						snd_hctl_elem_get_name(helem));
 					return 0;
 				}
 				if (virt_snd->jacks[i]->connected > 0)
@@ -2021,20 +1949,19 @@ virtio_sound_event_callback(snd_hctl_elem_t *helem, unsigned int mask)
 			}
 		}
 		if (i == virt_snd->jack_cnt) {
-			WPRINTF("%s: %d Jack %s miss matched!\n", __func__, i, str);
+			WPRINTF("%s: %d Jack %s miss matched!\n", __func__, i, snd_hctl_elem_get_name(helem));
 			return 0;
 		}
 	} else {
 		for (i = 0; i < virt_snd->ctl_cnt; i++) {
-			// todo: Use snd_hctl_elem_t instead.
-			if (strcmp(str, virt_snd->ctls[i]->identifier) == 0) {
+			if (helem == virt_snd->ctls[i]->elem) {
 				event.hdr.code = VIRTIO_SND_EVT_CTL_NOTIFY;
 				event.data = (i << 16) | (mask & 0xffff);
 				break;
 			}
 		}
 		if (i == virt_snd->ctl_cnt) {
-			WPRINTF("%s: ctl %s miss matched!\n", __func__, str);
+			WPRINTF("%s: ctl %s miss matched!\n", __func__, snd_hctl_elem_get_name(helem));
 			return 0;
 		}
 	}
@@ -2060,7 +1987,8 @@ virtio_sound_event_thread(void *param)
 	pfd = alloca(sizeof(*pfd) * npfds);
 	revents = alloca(sizeof(*revents) * max);
 	for (i = 0; i < virt_snd->card_cnt; i++) {
-		err = snd_hctl_poll_descriptors(virt_snd->cards[i]->handle, &pfd[virt_snd->cards[i]->start], virt_snd->cards[i]->count);
+		err = snd_hctl_poll_descriptors(virt_snd->cards[i]->handle, &pfd[virt_snd->cards[i]->start],
+			virt_snd->cards[i]->count);
 		if (err < 0) {
 			WPRINTF("%s: fail to get poll descriptors!\n", __func__);
 			pthread_exit(NULL);
@@ -2089,36 +2017,11 @@ virtio_sound_event_thread(void *param)
 static int
 virtio_sound_event_init(struct virtio_sound *virt_snd, char *opts)
 {
-	snd_hctl_elem_t *helem;
-	snd_ctl_elem_id_t *id;
 	pthread_attr_t attr;
 	pthread_t tid;
-	char *cpy, *str;
 	int i, start = 0;
 
-	cpy = strdup(opts);
-
-	snd_ctl_elem_id_alloca(&id);
 	for (i = 0; i < virt_snd->card_cnt; i++) {
-		if (snd_hctl_open(&virt_snd->cards[i]->handle, virt_snd->cards[i]->card, 0)) {
-			WPRINTF("%s: hctl open fail, card %s!\n", __func__, virt_snd->cards[i]->card);
-			free(cpy);
-			return -1;
-		}
-		if (snd_hctl_load(virt_snd->cards[i]->handle) < 0) {
-			WPRINTF("%s: hctl load fail, card %s!\n", __func__, virt_snd->cards[i]->card);
-			snd_hctl_close(virt_snd->cards[i]->handle);
-			free(cpy);
-			return -1;
-		}
-		for (helem = snd_hctl_first_elem(virt_snd->cards[i]->handle); helem; helem = snd_hctl_elem_next(helem)) {
-			snd_hctl_elem_get_id(helem, id);
-			str = snd_ctl_ascii_elem_id_get(id);
-			// todo: Use snd_hctl_elem_t instead.
-			if (!str || strstr(cpy, str) == NULL)
-				continue;
-			snd_hctl_elem_set_callback(helem, virtio_sound_event_callback);
-		}
 		virt_snd->cards[i]->count = snd_hctl_poll_descriptors_count(virt_snd->cards[i]->handle);
 		virt_snd->cards[i]->start = start;
 		start += virt_snd->cards[i]->count;
@@ -2127,7 +2030,6 @@ virtio_sound_event_init(struct virtio_sound *virt_snd, char *opts)
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	pthread_create(&tid, &attr, virtio_sound_event_thread, (void *)virt_snd);
-	free(cpy);
 	return 0;
 }
 
