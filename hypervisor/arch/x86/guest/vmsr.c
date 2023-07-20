@@ -291,6 +291,16 @@ static const uint32_t unsupported_msrs[] = {
 	MSR_IA32_THERM_STATUS,
 	MSR_IA32_PACKAGE_THERM_INTERRUPT,
 	MSR_IA32_PACKAGE_THERM_STATUS,
+
+	/*
+	 * HFI and IDT registers disabled:
+	 * CPUID.06H.EAX[19]
+	 * CPUID.06H.EAX[23]
+	 */
+	IA32_HW_FEEDBACK_PTR,
+	IA32_HW_FEEDBACK_CONFIG,
+	IA32_THREAD_FEEDBACK_CHAR,
+	IA32_HW_FEEDBACK_THREAD_CONFIG,
 };
 
 /* emulated_guest_msrs[] shares same indexes with array vcpu->arch->guest_msrs[] */
