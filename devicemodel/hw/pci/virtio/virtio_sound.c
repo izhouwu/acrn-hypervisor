@@ -331,13 +331,15 @@ virtio_sound_notify_xfer(struct virtio_sound *virt_snd, struct virtio_vq_info *v
 			return;
 		}
 		msg_node->iov = malloc(sizeof(struct iovec) * iov_cnt);
-		if (msg_node == NULL) {
-			WPRINTF("%s: malloc data node fail!\n", __func__);
+		if (msg_node->iov == NULL) {
+			WPRINTF("%s: malloc iov nodes fail!\n", __func__);
+			free(msg_node);
 			return;
 		}
 		n = vq_getchain(vq, &msg_node->idx, msg_node->iov, iov_cnt, NULL);
 		if (n <= 0) {
 			WPRINTF("%s: fail to getchain!\n", __func__);
+			free(msg_node->iov);
 			free(msg_node);
 			return;
 		}
