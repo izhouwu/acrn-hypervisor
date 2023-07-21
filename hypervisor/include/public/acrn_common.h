@@ -776,6 +776,7 @@ enum {
 	/* The sbuf with above ids are created each pcpu */
 	ACRN_SBUF_PER_PCPU_ID_MAX,
 	ACRN_ASYNCIO = 64,
+	ACRN_VM_EVENT,
 };
 
 /* Make sure sizeof(struct shared_buf) == SBUF_HEAD_SIZE */
@@ -790,6 +791,19 @@ struct shared_buf {
 	uint32_t overrun_cnt;	/* count of overrun */
 	uint32_t size;		/* ele_num * ele_size */
 	uint32_t padding[6];
+};
+
+#define VM_EVENT_RTC_CHG	0U
+#define VM_EVENT_POWEROFF	1U
+#define VM_EVENT_TRIPLE_FAULT	2U
+
+#define VM_EVENT_COUNT		3U
+
+#define VM_EVENT_DATA_LEN	28U
+
+struct vm_event {
+    uint32_t type;
+    uint8_t event_data[VM_EVENT_DATA_LEN];
 };
 
 /**
