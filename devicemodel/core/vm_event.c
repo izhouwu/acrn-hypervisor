@@ -20,6 +20,8 @@
 #include "hsm_ioctl_defs.h"
 #include "sbuf.h"
 #include "log.h"
+#include <cjson/cJSON.h>
+#include "monitor.h"
 
 #define VM_EVENT_ELE_SIZE (sizeof(struct vm_event))
 
@@ -50,9 +52,109 @@ struct vm_event_tunnel {
 	bool enabled;
 };
 
+enum vm_event_data_element_type {
+	VE_INVALID = 0,
+	VE_U8_TYPE,
+	VE_U32_TYPE,
+	VE_U64_TYPE,
+	VE_STR_TYPE,
+	VE_BOOL_TYPE,
+	VE_TIMET_TYPE,
+};
+
+#define MAX_ELEMENT_NUM 32
+
+struct ve_element {
+	enum vm_event_data_element_type el_type;
+	char *name;
+	uint64_t offset_in_struct;
+}; 
+
+struct vm_event_json_trans_table {
+	uint32_t type;
+	struct ve_element ele[MAX_ELEMENT_NUM];
+};
+
+#define OFFSET_IN_STRUCT(s, e)  ((uint64_t)&((struct s *)0)->e)
+#define VM_EVENT_DATA_ELE(s, e, t) {t, #e, OFFSET_IN_STRUCT(s, e)}
+
+static struct vm_event_json_trans_table trans[] = {
+
+};
+
+static char *generate_vm_event_message(struct vm_event *event)
+{
+	char *event_msg = NULL;
+	cJSON *val;
+	cJSON *event_obj = cJSON_CreateObject();
+	int i, j;
+
+	if (event_obj == NULL)
+		return NULL;
+	val = cJSON_CreateNumber(event->type);
+	if (val == NULL)
+		return NULL;
+	cJSON_AddItemToObject(event_obj, "vm_event", val);
+
+	for (i = 0; i < ARRAY_SIZE(trans); i++){
+		if (event->type == trans[i].type) {
+			break;
+		}
+	}
+
+	if(i >= ARRAY_SIZE(trans)) {
+		goto out;
+	}
+
+	for (j = 0; j < MAX_ELEMENT_NUM; j ++) {
+		struct ve_element *pve = &(trans[i].ele[j]);
+		if (pve->el_type == VE_INVALID) {
+			break;
+		}
+		switch(pve->el_type) {
+			case VE_U8_TYPE:
+			{
+				uint8_t num = *(uint8_t *)(((uint8_t *)event->event_data) + pve->offset_in_struct);
+				cJSON *obj = cJSON_CreateNumber((double)num);
+				if (obj) {
+					cJSON_AddItemToObject(event_obj, pve->name, obj);
+				}					
+				break;
+			}
+			case VE_TIMET_TYPE:
+			{
+				time_t num = *(time_t *)(((time_t *)event->event_data) + pve->offset_in_struct);
+				cJSON *obj = cJSON_CreateNumber((double)num);
+				if (obj) {
+					cJSON_AddItemToObject(event_obj, pve->name, obj);
+				}					
+				break;
+			}
+			case VE_STR_TYPE:
+				break;
+			case VE_BOOL_TYPE:
+				break;
+			default:
+				break;
+		}
+
+	}
+out:
+	event_msg = cJSON_Print(event_obj);
+	if (event_msg == NULL)
+		fprintf(stderr, "Failed to generate vm_event message.\n");
+
+	cJSON_Delete(event_obj);
+	return event_msg;
+}
+
 static void general_event_handler(struct vmctx *ctx, struct vm_event *event)
 {
-	return;
+	char *msg = generate_vm_event_message(event);
+	if (msg != NULL) {
+		vm_monitor_send_vm_event(msg);
+		free(msg);
+	}
 }
 
 static vm_event_handler ve_handler[VM_EVENT_COUNT] = {
