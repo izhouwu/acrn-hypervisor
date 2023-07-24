@@ -34,6 +34,7 @@ static int epoll_fd;
 static bool started = false;
 static char hv_vm_event_page[4096] __aligned(4096);
 static char dm_vm_event_page[4096] __aligned(4096);
+static pthread_t vm_event_tid;
 
 enum event_source_type {
 	EVENT_SOURCE_TYPE_HV,
@@ -48,6 +49,62 @@ struct vm_event_tunnel {
 	pthread_mutex_t mtx;
 	bool enabled;
 };
+
+static void general_event_handler(struct vmctx *ctx, struct vm_event *event)
+{
+	return;
+}
+
+static vm_event_handler ve_handler[VM_EVENT_COUNT] = {
+	[VM_EVENT_SET_RTC] = general_event_handler,
+	[VM_EVENT_POWEROFF] = general_event_handler,
+	[VM_EVENT_TRIPPLE_FAULT] = general_event_handler,
+};
+
+static void *vm_event_thread(void *param)
+{
+	int n, i;
+	struct vm_event ve;
+    eventfd_t val;
+	struct vm_event_tunnel *tunnel;
+	struct vmctx *ctx = param;
+
+	struct epoll_event eventlist[MAX_EPOLL_EVENTS];
+
+	pr_notice("vm event thread running");
+
+	while (1) {
+		n = epoll_wait(epoll_fd, eventlist, MAX_EPOLL_EVENTS, -1);
+		if (n < 0) {
+			if (errno != EINTR) {
+				pr_err("%s: epoll failed %d\n", __func__, errno);				
+			}
+			continue;
+		}
+		for (i = 0; i < n; i++) {
+			if (i < MAX_EPOLL_EVENTS) {
+
+			}
+			tunnel = eventlist[i].data.ptr;
+			if (tunnel && tunnel->enabled) {
+				//pr_notice("vm event kicked from %d\n", tunnel->type);
+				while (!sbuf_is_empty(tunnel->sbuf)) {
+					sbuf_get(tunnel->sbuf, (uint8_t*)&ve);
+					eventfd_read(tunnel->kick_fd, &val);
+					pr_notice("%ld vm event from%d %d\n", val, tunnel->type,
+						ve.type);
+					if (ve.type < VM_EVENT_COUNT && ve_handler[ve.type] != NULL) {
+						(ve_handler[ve.type])(ctx, &ve);
+					} else {
+						pr_err("%s: unhandled vm event type %d\n", __func__, ve.type);
+					}
+
+				}
+			}
+		}
+	}
+	return NULL;
+}
 
 static struct vm_event_tunnel ve_tunnel[MAX_VM_EVENT_TUNNELS] = {
 	{
@@ -146,6 +203,12 @@ int vm_init_vm_event(struct vmctx *ctx)
 		goto out;
 	}
 
+	error = pthread_create(&vm_event_tid, NULL, vm_event_thread, ctx);
+	if (error) {
+		pr_err("%s: vm_event create failed %d\n", __func__, errno);
+		goto out;
+	}
+
 	started = true;
 	return 0;
 
@@ -160,7 +223,11 @@ out:
 
 int vm_event_deinit(void)
 {
+	void *jval;
+
 	if (started) {
+		pthread_kill(vm_event_tid, SIGCONT);
+		pthread_join(vm_event_tid, &jval);
 		close(epoll_fd);
 		destory_event_tunnel(&ve_tunnel[HV_VM_EVENT_TUNNEL]);
 		destory_event_tunnel(&ve_tunnel[DM_VM_EVENT_TUNNEL]);
