@@ -795,7 +795,7 @@ struct shared_buf {
 
 #define VM_EVENT_RTC_CHG		0U
 #define VM_EVENT_POWEROFF		1U
-#define VM_EVENT_TRIPPLE_FAULT	2U
+#define VM_EVENT_TRIPLE_FAULT	2U
 
 #define VM_EVENT_COUNT			3U
 
