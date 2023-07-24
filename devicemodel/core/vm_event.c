@@ -235,3 +235,30 @@ int vm_event_deinit(void)
 	}
 	return 0;
 }
+
+/* Send a dm generated vm_event by putting it to sbuf
+ * We have a dedicated thread in dm to receive those events.
+ */
+int dm_send_vm_event(struct vm_event *event)
+{
+	struct vm_event_tunnel *tunnel = &ve_tunnel[DM_VM_EVENT_TUNNEL];
+	struct shared_buf *sbuf;
+	int32_t ret = -ENODEV;
+	uint32_t size_sent;
+
+	if (!tunnel->enabled) {
+		return -1;
+	}
+	sbuf = tunnel->sbuf;
+
+	if (sbuf != NULL) {
+		pthread_mutex_lock(&tunnel->mtx);
+		size_sent = sbuf_put(sbuf, (uint8_t *)event);
+		pthread_mutex_unlock(&tunnel->mtx);
+		if (size_sent == VM_EVENT_ELE_SIZE) {
+			eventfd_write(tunnel->kick_fd, 1UL);
+			ret = 0;
+		}
+	}
+	return ret;
+}
