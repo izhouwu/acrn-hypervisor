@@ -43,6 +43,7 @@
 #include "lpc.h"
 
 #include "log.h"
+#include "vm_event.h"
 
 /* #define DEBUG_RTC */
 #ifdef DEBUG_RTC
@@ -51,6 +52,10 @@
 # define RTC_DEBUG(format, ...)      do { } while (0)
 #endif
 
+#define U64_MASK(bit) (1UL << bit)
+#define DATE_TIME_REGS (U64_MASK(RTC_SEC) | U64_MASK(RTC_MIN) | U64_MASK(RTC_HRS) |\
+	U64_MASK(RTC_DAY) | U64_MASK(RTC_MONTH) | U64_MASK(RTC_YEAR) | U64_MASK(RTC_CENTURY))
+#define EVENT_TRIG_WINDOW_NS 5000000000UL
 /* Register layout of the RTC */
 struct rtcdev {
 	uint8_t	sec;
@@ -81,6 +86,7 @@ struct vrtc {
 	time_t		base_uptime;
 	time_t		base_rtctime;
 	struct rtcdev	rtcdev;
+	uint64_t	rtc_update_mask;	/* recode recent updated vrtc regs */
 };
 
 /*
@@ -445,14 +451,12 @@ secs_to_rtc(time_t rtctime, struct vrtc *vrtc, int force_update)
 }
 
 static time_t
-rtc_to_secs(struct vrtc *vrtc)
+rtcdev_to_secs(struct rtcdev *rtc)
 {
 	struct clktime ct;
 	struct timespec ts;
-	struct rtcdev *rtc;
 	int century, error, hour, pm, year;
 
-	rtc = &vrtc->rtcdev;
 	bzero(&ct, sizeof(struct clktime));
 	error = rtcget(rtc, rtc->sec, &ct.sec);
 	if (error || ct.sec < 0 || ct.sec > 59) {
@@ -556,6 +560,13 @@ fail:
 	return VRTC_BROKEN_TIME;
 }
 
+
+static time_t
+rtc_to_secs(struct vrtc *vrtc)
+{
+	return rtcdev_to_secs(&vrtc->rtcdev);
+}
+
 static void
 vrtc_start_timer(struct acrn_timer *timer, time_t sec, time_t nsec)
 {
@@ -643,6 +654,8 @@ vrtc_time_update(struct vrtc *vrtc, time_t newtime, time_t newbase)
 	if (uintr_enabled(vrtc))
 		vrtc_set_reg_c(vrtc, rtc->reg_c | RTCIR_UPDATE);
 
+				pr_notice(" update %lld %x %x %x %x %x %x %x %x\n", vrtc->base_rtctime,
+					rtc->year, rtc->month, rtc->day_of_month, rtc->hour, rtc->min, rtc->sec, rtc->century);
 	return 0;
 }
 
@@ -712,6 +725,29 @@ vrtc_set_reg_c(struct vrtc *vrtc, uint8_t newval)
 		vm_set_gsi_irq(vrtc->vm, RTC_IRQ, GSI_SET_LOW);
 		RTC_DEBUG("RTC irq %d deasserted\n", RTC_IRQ);
 	}
+}
+
+static void
+vrtc_send_set_rtc_event(struct vrtc *vrtc)
+{
+	struct vm_event event;
+	struct set_rtc_event_data *data = (struct set_rtc_event_data *)event.event_data;
+	time_t newtime = rtc_to_secs(vrtc);
+
+	data->yy = vrtc->rtcdev.year;
+	data->mm = vrtc->rtcdev.month;
+	data->dm = vrtc->rtcdev.day_of_month;
+	data->dw = vrtc->rtcdev.day_of_week;
+	data->hh = vrtc->rtcdev.hour;
+	data->mi = vrtc->rtcdev.min;
+	data->ss = vrtc->rtcdev.sec;
+	data->century = vrtc->rtcdev.century;
+	data->time = newtime;
+
+	event.type = VM_EVENT_SET_RTC;
+
+	pr_notice("%lld %x %x %x %x %x %x %x %x\n", newtime, data->yy, data->mm, data->dm, data->dw, data->hh, data->mi, data->ss, data->century);
+	dm_send_vm_event(&event);
 }
 
 static int
@@ -882,6 +918,15 @@ vrtc_addr_handler(struct vmctx *ctx, int vcpu, int in, int port,
 	return 0;
 }
 
+static uint64_t get_sys_tick_ns(void)
+{
+	struct timespec tp;
+
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+
+	return tp.tv_nsec;
+}
+
 int
 vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 		  int bytes, uint32_t *eax, void *arg)
@@ -959,16 +1004,43 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 			break;
 		}
 
+		if (offset < 64) {
+			/* If all date time regs are set in a short time window, we can infer that
+			 * guest has just conducted an rtc date time set operation.
+			 * Then we generate a RTC set event.
+			 */
+			static uint64_t window_start_tick = 0UL;
+
+			if ((U64_MASK(offset) & DATE_TIME_REGS) != 0UL) {
+				/* start window on first date time reg write */
+				if (vrtc->rtc_update_mask == 0UL) {
+					window_start_tick = get_sys_tick_ns();
+				}
+				/* reset window on timeout */
+				if ((get_sys_tick_ns() - window_start_tick) > EVENT_TRIG_WINDOW_NS) {
+					window_start_tick = get_sys_tick_ns();
+					vrtc->rtc_update_mask = 0UL;
+				}
+				vrtc->rtc_update_mask |= U64_MASK(offset);
+				if ((vrtc->rtc_update_mask & DATE_TIME_REGS) == DATE_TIME_REGS) {
+					vrtc->rtc_update_mask = 0UL;
+					pr_notice("event trig %x %x %x %x %x %x %x %x\n", 
+						rtc->year, rtc->month, rtc->day_of_month,
+						rtc->hour, rtc->min, rtc->sec, rtc->century);
+					vrtc_send_set_rtc_event(vrtc);
+				}
+			}
+		}
 		/*
 		 * XXX some guests (e.g. OpenBSD) write the century byte
 		 * outside of RTCSB_HALT so re-calculate the RTC date/time.
 		 */
-		if (offset == RTC_CENTURY && !rtc_halted(vrtc)) {
+		//if (offset == RTC_CENTURY && !rtc_halted(vrtc)) {
 			curtime = rtc_to_secs(vrtc);
 			error = vrtc_time_update(vrtc, curtime, time(NULL));
 			if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
 				error = -1;
-		}
+		//}
 	}
 
 	pthread_mutex_unlock(&vrtc->mtx);
@@ -1009,6 +1081,7 @@ vrtc_init(struct vmctx *ctx)
 
 	vrtc->vm = ctx;
 	ctx->vrtc = vrtc;
+	vrtc->rtc_update_mask = 0UL;
 
 	pthread_mutex_init(&vrtc->mtx, NULL);
 

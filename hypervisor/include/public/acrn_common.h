@@ -806,6 +806,19 @@ struct vm_event {
     uint8_t event_data[VM_EVENT_DATA_LEN];
 };
 
+/* changing of vm event data type should involve vm_event_json_trans_table*/
+struct set_rtc_event_data {
+	uint64_t	time;
+	uint8_t yy;
+	uint8_t mm;
+	uint8_t dm;
+	uint8_t dw;
+	uint8_t hh;
+	uint8_t mi;
+	uint8_t ss;
+	uint8_t century;
+};
+
 /**
  * @}
  */

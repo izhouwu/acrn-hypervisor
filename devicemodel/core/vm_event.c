@@ -79,7 +79,18 @@ struct vm_event_json_trans_table {
 #define VM_EVENT_DATA_ELE(s, e, t) {t, #e, OFFSET_IN_STRUCT(s, e)}
 
 static struct vm_event_json_trans_table trans[] = {
-
+		VM_EVENT_SET_RTC,
+		{
+			VM_EVENT_DATA_ELE(set_rtc_event_data, time, VE_TIMET_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, yy, VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, mm, VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, dm, VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, dw, VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, hh, VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, mi, VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, ss, VE_U8_TYPE),
+			VM_EVENT_DATA_ELE(set_rtc_event_data, century, VE_U8_TYPE),
+		},
 };
 
 static char *generate_vm_event_message(struct vm_event *event)
