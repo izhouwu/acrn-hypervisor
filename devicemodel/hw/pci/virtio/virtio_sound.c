@@ -190,6 +190,7 @@ struct virtio_sound {
 static int virtio_sound_cfgread(void *vdev, int offset, int size, uint32_t *retval);
 static int virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *event);
 static int virtio_sound_event_callback(snd_hctl_elem_t *helem, unsigned int mask);
+static void virtio_sound_reset(void *vdev);
 
 static struct virtio_sound *vsound = NULL;
 
@@ -197,7 +198,7 @@ static struct virtio_ops virtio_snd_ops = {
 	"virtio_sound",		/* our name */
 	VIRTIO_SOUND_VQ_NUM,	/* we support 4 virtqueue */
 	sizeof(struct virtio_snd_config),			/* config reg size */
-	NULL,	/* reset */
+	virtio_sound_reset,	/* reset */
 	NULL,	/* device-wide qnotify */
 	virtio_sound_cfgread,				/* read virtio config */
 	NULL,				/* write virtio config */
@@ -310,6 +311,14 @@ virtio_sound_cfgread(void *vdev, int offset, int size, uint32_t *retval)
 	ptr = (uint8_t *)&virt_snd->snd_cfg + offset;
 	memcpy(retval, ptr, size);
 	return 0;
+}
+
+static void
+virtio_sound_reset(void *vdev)
+{
+	struct virtio_sound *virt_snd = vdev;
+	/* now reset rings, MSI-X vectors, and negotiated capabilities */
+	virtio_reset_dev(&virt_snd->base);
 }
 
 static struct virtio_sound *virtio_sound_get_device()
