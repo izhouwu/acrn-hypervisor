@@ -41,6 +41,7 @@
 #include "timer.h"
 #include "acpi.h"
 #include "lpc.h"
+#include "vm_event.h"
 
 #include "log.h"
 
@@ -837,6 +838,17 @@ vrtc_set_reg_a(struct vrtc *vrtc, uint8_t newval)
 	}
 }
 
+static void
+send_rtc_chg_event(uint8_t index, time_t secs)//, uint64_t update_mask)//, bool is_halted)
+{
+	struct vm_event event;
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event.event_data;
+	event.type = VM_EVENT_RTC_CHG;
+	data->date_time_index = index;
+	data->time_in_secs = secs;
+	dm_send_vm_event(&event);
+}
+
 int
 vrtc_nvram_write(struct vrtc *vrtc, int offset, uint8_t value)
 {
@@ -880,6 +892,12 @@ vrtc_addr_handler(struct vmctx *ctx, int vcpu, int in, int port,
 	pthread_mutex_unlock(&vrtc->mtx);
 
 	return 0;
+}
+
+static inline bool vrtc_is_time_register(uint32_t offset)
+{
+	return ((offset == RTC_SEC) || (offset == RTC_MIN) || (offset == RTC_HRS) || (offset == RTC_DAY)
+			|| (offset == RTC_MONTH) || (offset == RTC_YEAR) || (offset == RTC_CENTURY));
 }
 
 int
@@ -960,15 +978,20 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 		}
 
 		/*
-		 * XXX some guests (e.g. OpenBSD) write the century byte
-		 * outside of RTCSB_HALT so re-calculate the RTC date/time.
+		 * XXX some guests (e.g. OpenBSD) write the century byte outside of RTCSB_HALT,
+		 * some guests (e.g. WaaG) write all date/time outside of RTCSB_HALT,
+		 * so re-calculate the RTC date/time.
 		 */
-		if (offset == RTC_CENTURY && !rtc_halted(vrtc)) {
-			curtime = rtc_to_secs(vrtc);
-			error = vrtc_time_update(vrtc, curtime, time(NULL));
-			if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
-				error = -1;
+		if (vrtc_is_time_register(offset)) {
+		 	if (!rtc_halted(vrtc)) {
+				curtime = rtc_to_secs(vrtc);
+				error = vrtc_time_update(vrtc, curtime, time(NULL));
+				if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
+					error = -1;
+			}
+			send_rtc_chg_event(offset, rtc_to_secs(vrtc));
 		}
+
 	}
 
 	pthread_mutex_unlock(&vrtc->mtx);

@@ -842,6 +842,11 @@ struct vm_event {
     uint8_t event_data[VM_EVENT_DATA_LEN];
 };
 
+struct rtc_change_event_data {
+	uint64_t	time_in_secs;	/* to what time(in secs) the RTC changed */
+	uint8_t 	date_time_index;	/* which of the RTC date/time items has been changed */	
+};
+
 /**
  * @}
  */
