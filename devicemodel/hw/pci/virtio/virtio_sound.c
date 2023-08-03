@@ -600,7 +600,7 @@ virtio_sound_xfer(struct virtio_sound_pcm *stream)
 static void
 virtio_sound_clean_vq(struct virtio_sound_pcm *stream) {
 	struct virtio_sound_msg_node *msg_node;
-	struct virtio_vq_info *vq;
+	struct virtio_vq_info *vq = NULL;
 	struct virtio_snd_pcm_status *ret_status;
 
 	while ((msg_node = STAILQ_FIRST(&stream->head)) != NULL) {
@@ -2093,22 +2093,22 @@ virtio_sound_event_init(struct virtio_sound *virt_snd, char *opts)
 	snd_ctl_elem_id_t *id;
 	pthread_attr_t attr;
 	pthread_t tid;
-	char *cpy, *c, *str;
+	char *cpy, *str;
 	int i, start = 0;
 
-	c = cpy = strdup(opts);
+	cpy = strdup(opts);
 
 	snd_ctl_elem_id_alloca(&id);
 	for (i = 0; i < virt_snd->card_cnt; i++) {
 		if (snd_hctl_open(&virt_snd->cards[i]->handle, virt_snd->cards[i]->card, 0)) {
 			WPRINTF("%s: hctl open fail, card %s!\n", __func__, virt_snd->cards[i]->card);
-			free(c);
+			free(cpy);
 			return -1;
 		}
 		if (snd_hctl_load(virt_snd->cards[i]->handle) < 0) {
 			WPRINTF("%s: hctl load fail, card %s!\n", __func__, virt_snd->cards[i]->card);
 			snd_hctl_close(virt_snd->cards[i]->handle);
-			free(c);
+			free(cpy);
 			return -1;
 		}
 		for (helem = snd_hctl_first_elem(virt_snd->cards[i]->handle); helem; helem = snd_hctl_elem_next(helem)) {
@@ -2127,7 +2127,7 @@ virtio_sound_event_init(struct virtio_sound *virt_snd, char *opts)
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	pthread_create(&tid, &attr, virtio_sound_event_thread, (void *)virt_snd);
-	free(c);
+	free(cpy);
 	return 0;
 }
 
