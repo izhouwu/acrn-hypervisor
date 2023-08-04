@@ -20,6 +20,8 @@
 #include "hsm_ioctl_defs.h"
 #include "sbuf.h"
 #include "log.h"
+#include <cjson/cJSON.h>
+#include "monitor.h"
 
 #define VM_EVENT_ELE_SIZE (sizeof(struct vm_event))
 
@@ -77,9 +79,34 @@ static inline struct vm_event_proc *get_vm_event_proc(struct vm_event *event)
 	return proc;
 }
 
+static char *generate_vm_event_message(struct vm_event *event)
+{
+	char *event_msg = NULL;
+	cJSON *val;
+	cJSON *event_obj = cJSON_CreateObject();
+
+	if (event_obj == NULL)
+		return NULL;
+	val = cJSON_CreateNumber(event->type);
+	if (val == NULL)
+		return NULL;
+	cJSON_AddItemToObject(event_obj, "vm_event", val);
+
+	event_msg = cJSON_Print(event_obj);
+	if (event_msg == NULL)
+		fprintf(stderr, "Failed to generate vm_event message.\n");
+
+	cJSON_Delete(event_obj);
+	return event_msg;
+}
+
 static void general_event_handler(struct vmctx *ctx, struct vm_event *event)
 {
-	return;
+	char *msg = generate_vm_event_message(event);
+	if (msg != NULL) {
+		vm_monitor_send_vm_event(msg);
+		free(msg);
+	}
 }
 
 static void *vm_event_thread(void *param)
