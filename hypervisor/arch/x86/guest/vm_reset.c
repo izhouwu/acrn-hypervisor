@@ -10,6 +10,7 @@
 #include <logmsg.h>
 #include <asm/per_cpu.h>
 #include <asm/guest/vm_reset.h>
+#include <vm_event.h>
 
 /**
  * @pre vm != NULL
@@ -17,6 +18,7 @@
 void triple_fault_shutdown_vm(struct acrn_vcpu *vcpu)
 {
 	struct acrn_vm *vm = vcpu->vm;
+	struct vm_event trp_event;
 
 	if (is_postlaunched_vm(vm)) {
 		struct io_request *io_req = &vcpu->req;
@@ -28,8 +30,10 @@ void triple_fault_shutdown_vm(struct acrn_vcpu *vcpu)
 		io_req->reqs.pio_request.size = 2UL;
 		io_req->reqs.pio_request.value = (VIRTUAL_PM1A_SLP_EN | (5U << 10U));
 
-		/* Inject pm1a S5 request to Service VM to shut down the guest */
-		(void)emulate_io(vcpu, io_req);
+		/* Send the event to DM. The event handler will decide what to do */
+		trp_event.type = VM_EVENT_TRIPLE_FAULT;
+		send_vm_event(vcpu->vm, &trp_event);
+		pause_vm(vcpu->vm);
 	} else {
 		if (is_service_vm(vm)) {
 			uint16_t vm_id;
