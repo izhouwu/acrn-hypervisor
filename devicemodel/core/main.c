@@ -71,6 +71,7 @@
 #include "cmd_monitor.h"
 #include "vdisplay.h"
 #include "iothread.h"
+#include "vm_event.h"
 
 #define	VM_MAXCPU		16	/* maximum virtual cpus */
 
@@ -1231,6 +1232,12 @@ main(int argc, char *argv[])
 			goto dev_fail;
 		}
 
+		pr_notice("vm setup vm event\n");
+		error = vm_event_init(ctx);
+		if (error) {
+			pr_warn("VM_EVENT is not supported by kernel or hyperviosr!\n");
+		}
+
 		/*
 		 * build the guest tables, MP etc.
 		 */
@@ -1285,6 +1292,7 @@ main(int argc, char *argv[])
 			break;
 		}
 
+		vm_event_deinit();
 		vm_deinit_vdevs(ctx);
 		mevent_deinit();
 		iothread_deinit();
@@ -1297,6 +1305,8 @@ main(int argc, char *argv[])
 	}
 
 vm_fail:
+	vm_event_deinit();
+
 	vm_deinit_vdevs(ctx);
 	if (ssram)
 		clean_vssram_configs();
