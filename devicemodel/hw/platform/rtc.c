@@ -41,6 +41,7 @@
 #include "timer.h"
 #include "acpi.h"
 #include "lpc.h"
+#include "vm_event.h"
 
 #include "log.h"
 
@@ -837,6 +838,17 @@ vrtc_set_reg_a(struct vrtc *vrtc, uint8_t newval)
 	}
 }
 
+static void
+send_rtc_chg_event(uint8_t index, time_t secs)
+{
+	struct vm_event event;
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event.event_data;
+	event.type = VM_EVENT_RTC_CHG;
+	data->date_time_index = index;
+	data->time_in_secs = secs;
+	dm_send_vm_event(&event);
+}
+
 int
 vrtc_nvram_write(struct vrtc *vrtc, int offset, uint8_t value)
 {
@@ -970,11 +982,18 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 		 * and some guests (e.g. WaaG) write all date/time outside of RTCSB_HALT,
 		 * so re-calculate the RTC date/time.
 		 */
-		if (vrtc_is_time_register(offset) && !rtc_halted(vrtc)) {
-			curtime = rtc_to_secs(vrtc);
-			error = vrtc_time_update(vrtc, curtime, time(NULL));
-			if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
-				error = -1;
+		if (vrtc_is_time_register(offset)) {
+			if (!rtc_halted(vrtc)) {
+				curtime = rtc_to_secs(vrtc);
+				error = vrtc_time_update(vrtc, curtime, time(NULL));
+				if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
+					error = -1;
+			}
+			/* We don't know when the Guest OS has finished the RTC change action.
+			 * So send an event each time the date/time regs has been updated.
+			 * The event handler will process those events.
+			 */
+			send_rtc_chg_event(offset, rtc_to_secs(vrtc));
 		}
 	}
 

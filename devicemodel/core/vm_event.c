@@ -33,6 +33,19 @@
 
 #define THROTTLE_WINDOW	1U /* time window for throttle counter, in secs*/
 
+#define RTC_SEC		0x00	/* seconds */
+#define RTC_MIN		0x02	/* minutes */
+#define RTC_HRS		0x04	/* hours */
+#define RTC_WDAY	0x06	/* week day */
+#define RTC_DAY		0x07	/* day of month */
+#define RTC_MONTH	0x08	/* month of year */
+#define RTC_YEAR	0x09	/* year */
+#define RTC_CENTURY	0x32	/* century */
+
+#define U64_MASK(bit) (1UL<<bit)
+#define ALL_DATE_TIME_MASK (U64_MASK(RTC_SEC) | U64_MASK(RTC_MIN) | U64_MASK(RTC_HRS) |\
+	U64_MASK(RTC_DAY) | U64_MASK(RTC_MONTH) | U64_MASK(RTC_YEAR) | U64_MASK(RTC_CENTURY))
+
 typedef void (*vm_event_handler)(struct vmctx *ctx, struct vm_event *event);
 typedef void (*vm_event_generate_jdata)(cJSON *event_obj, struct vm_event *event);
 
@@ -41,8 +54,12 @@ static bool started = false;
 static char hv_vm_event_page[4096] __aligned(4096);
 static char dm_vm_event_page[4096] __aligned(4096);
 static pthread_t vm_event_tid;
+static struct timespec time_window_size = {1, 0}; /* 1 sec time window */
 
 static void general_event_handler(struct vmctx *ctx, struct vm_event *event);
+static void rtc_chg_event_handler(struct vmctx *ctx, struct vm_event *event);
+
+static void gen_rtc_chg_jdata(cJSON *event_obj, struct vm_event *event);
 
 enum event_source_type {
 	EVENT_SOURCE_TYPE_HV,
@@ -76,8 +93,8 @@ struct vm_event_proc {
 
 static struct vm_event_proc ve_proc[VM_EVENT_COUNT] = {
 	[VM_EVENT_RTC_CHG] = {
-		.ve_handler = general_event_handler,
-		.gen_jdata_handler = NULL,
+		.ve_handler = rtc_chg_event_handler,
+		.gen_jdata_handler = gen_rtc_chg_jdata,
 		.throttle_rate = 1,
 	},
 	[VM_EVENT_POWEROFF] = {
@@ -223,6 +240,48 @@ static void emit_vm_event(struct vmctx *ctx, struct vm_event *event)
 static void general_event_handler(struct vmctx *ctx, struct vm_event *event)
 {
 	emit_vm_event(ctx, event);
+}
+
+static void gen_rtc_chg_jdata(cJSON *event_obj, struct vm_event *event)
+{
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event->event_data;
+	cJSON *val;
+	val = cJSON_CreateNumber(data->time_in_secs);
+	if (val != NULL) {
+		cJSON_AddItemToObject(event_obj, "time", val);
+	}
+}
+
+static void rtc_chg_event_handler(struct vmctx *ctx, struct vm_event *event)
+{
+	/* We are only dealing with rtc change events from a unique rtc source */
+	static uint64_t tm_set_mask = 0UL;
+	static struct timespec time_window_start;
+	struct timespec now, delta;
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event->event_data;
+	uint8_t date_time_index = data->date_time_index;
+
+	/* RTC date/time regs can only be writen one by one.
+	 * Here we recored those events, if all date/time regs are set in a short time window,
+	 * We may infer that a RTC change operation has been performed by guest OS.
+	 */
+	if (date_time_index < 64U) {
+		if (tm_set_mask == 0UL) {
+			clock_gettime(CLOCK_MONOTONIC, &time_window_start);
+		}
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		delta = now;
+		timespecsub(&delta, &time_window_start);
+		if (timespeccmp(&delta, &time_window_size, <)) {
+			tm_set_mask |= U64_MASK(date_time_index);
+			if (tm_set_mask == ALL_DATE_TIME_MASK) {
+				emit_vm_event(ctx, event);
+				tm_set_mask = 0UL;
+			}
+		} else {
+			tm_set_mask = 0UL;
+		}
+	}
 }
 
 static void *vm_event_thread(void *param)

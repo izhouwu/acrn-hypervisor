@@ -842,6 +842,18 @@ struct vm_event {
     uint8_t event_data[VM_EVENT_DATA_LEN];
 };
 
+struct rtc_change_event_data {
+	/* what time(in secs) the RTC has been changed to*/
+	uint64_t	time_in_secs;
+	/* which of the RTC date/time items has been changed.
+	 * this is a 'enum' value corresponding to RTC date/time reg index.
+	 *
+	 * RTC date/time regs may only be write 1 by 1, so we send this value to
+	 * event handler to determine when the change has been completed.
+	 */
+	uint8_t 	date_time_index;
+};
+
 /**
  * @}
  */
