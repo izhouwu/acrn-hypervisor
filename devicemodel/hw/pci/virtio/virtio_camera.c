@@ -555,7 +555,7 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 	int width;
 	int height;
 	int format;
-	int buffer_count = camera_devs[camera_id].buffer_count;
+	uint8_t buffer_count = camera_devs[camera_id].buffer_count;
 	struct capture_buffer* p = NULL;
 	struct v4l2_fmtdesc format_desc = {};
 	struct dma_buf_info* pdma;
@@ -925,7 +925,7 @@ static void *virtio_camera_thread(void *data)
 
 			pr_notice("vcamera thread camera_id %d get vq_getchain\n", camera_id);
 
-			if (n < 0) {
+			if (n < 0 || n > VIRTIO_CAMERA_MAXSEGS) {
 				pr_err("virtio-camera: invalid descriptors\n");
 				continue;
 			}
