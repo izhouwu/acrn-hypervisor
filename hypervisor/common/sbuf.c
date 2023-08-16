@@ -27,8 +27,13 @@ uint32_t sbuf_next_ptr(uint32_t pos_arg,
 
 /**
  * The high caller should guarantee each time there must have
- * sbuf->ele_size data can be write form data and this function
- * should guarantee execution atomically.
+ * sbuf->ele_size data can be write form data.
+ *
+ * But as sbuf->ele_size is possibly setup by some sources outside of the
+ * HV (e.g. the service VM), it is not meant to be trusted. So caller
+ * should provide the max length of the data for safety reason.
+ *
+ * And this function should guarantee execution atomically.
  *
  * flag:
  * If OVERWRITE_EN set, buf can store (ele_num - 1) elements at most.
@@ -43,7 +48,7 @@ uint32_t sbuf_next_ptr(uint32_t pos_arg,
  * negative:	failed.
  */
 
-uint32_t sbuf_put(struct shared_buf *sbuf, uint8_t *data)
+uint32_t sbuf_put(struct shared_buf *sbuf, uint8_t *data, uint32_t max_len)
 {
 	void *to;
 	uint32_t next_tail;
@@ -64,7 +69,8 @@ uint32_t sbuf_put(struct shared_buf *sbuf, uint8_t *data)
 		}
 		to = (void *)sbuf + SBUF_HEAD_SIZE + sbuf->tail;
 
-		(void)memcpy_s(to, sbuf->ele_size, data, sbuf->ele_size);
+		ele_size = sbuf->ele_size < max_len ? sbuf->ele_size : max_len;
+		(void)memcpy_s(to, sbuf->ele_size, data, ele_size);
 		/* make sure write data before update head */
 		cpu_write_memory_barrier();
 
@@ -73,7 +79,6 @@ uint32_t sbuf_put(struct shared_buf *sbuf, uint8_t *data)
 					sbuf->ele_size, sbuf->size);
 		}
 		sbuf->tail = next_tail;
-		ele_size = sbuf->ele_size;
 	}
 	clac();
 
