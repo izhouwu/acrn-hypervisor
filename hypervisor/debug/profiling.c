@@ -381,11 +381,13 @@ static int32_t profiling_generate_data(int32_t collector, uint32_t type)
 			}
 
 			for (i = 0U; i < (((DATA_HEADER_SIZE - 1U) / SEP_BUF_ENTRY_SIZE) + 1U); i++) {
-				(void)sbuf_put(sbuf, (uint8_t *)&pkt_header + i * SEP_BUF_ENTRY_SIZE);
+				(void)sbuf_put(sbuf, (uint8_t *)&pkt_header + i * SEP_BUF_ENTRY_SIZE,
+					sizeof(pkt_header) - i * SEP_BUF_ENTRY_SIZE);
 			}
 
 			for (i = 0U; i < (((payload_size - 1U) / SEP_BUF_ENTRY_SIZE) + 1U); i++) {
-				(void)sbuf_put(sbuf, (uint8_t *)payload + i * SEP_BUF_ENTRY_SIZE);
+				(void)sbuf_put(sbuf, (uint8_t *)payload + i * SEP_BUF_ENTRY_SIZE,
+					payload_size - i * SEP_BUF_ENTRY_SIZE);
 			}
 
 			ss->samples_logged++;
