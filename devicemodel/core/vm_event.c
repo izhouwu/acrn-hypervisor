@@ -246,7 +246,7 @@ static void gen_rtc_chg_jdata(cJSON *event_obj, struct vm_event *event)
 {
 	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event->event_data;
 	cJSON *val;
-	val = cJSON_CreateNumber(data->time_in_secs);
+	val = cJSON_CreateNumber(data->delta_time_in_secs);
 	if (val != NULL) {
 		cJSON_AddItemToObject(event_obj, "time", val);
 	}
@@ -262,8 +262,9 @@ static void rtc_chg_event_handler(struct vmctx *ctx, struct vm_event *event)
 	uint8_t date_time_index = data->date_time_index;
 
 	/* RTC date/time regs can only be writen one by one.
-	 * Here we recored those events, if all date/time regs are set in a short time window,
-	 * We may infer that a RTC change operation has been performed by guest OS.
+	 * Only after the last write, we can get the real time RTC changed to.
+	 * So we set up an 1s timer, if no more writes in this time window,
+	 * we can conclude that the time change has been finished.
 	 */
 	if (date_time_index < 64U) {
 		if (tm_set_mask == 0UL) {

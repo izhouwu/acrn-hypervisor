@@ -76,11 +76,15 @@ struct rtcdev {
 struct vrtc {
 	struct vmctx *vm;
 	pthread_mutex_t	mtx;
+	pthread_mutex_t	vm_event_mtx;
 	struct acrn_timer update_timer;     /* timer for update interrupt */
 	struct acrn_timer periodic_timer;   /* timer for periodic interrupt */
+	struct acrn_timer vm_event_timer;   	/* timer for sending RTC change vm event */
 	u_int		addr;               /* RTC register to read or write */
 	time_t		base_uptime;
 	time_t		base_rtctime;
+	time_t		accum_delta;	/* Accumulate delta time on each change, until vm event is sent. */
+	struct timespec	time_window_start;
 	struct rtcdev	rtcdev;
 };
 
@@ -99,6 +103,9 @@ struct clktime {
 	int	dow;			/* day of week (0 - 6; 0 = Sunday) */
 	long nsec;			/* nano seconds */
 };
+
+/* If no more RTC time change in the time window, send the RTC change vm_event */
+#define RTC_CHG_VM_EVENT_DELAY_WINDOW	1
 
 /* Some handy constants. */
 #define SECDAY		(24 * 60 * 60)
@@ -190,6 +197,54 @@ u_char const bin2bcd_data[] = {
 static void vrtc_set_reg_c(struct vrtc *vrtc, uint8_t newval);
 
 static int rtc_flag_broken_time = 1;
+
+static void
+send_rtc_chg_event(struct vrtc *vrtc, time_t delta_secs)
+{
+	struct itimerspec ts;
+
+	pthread_mutex_lock(&vrtc->vm_event_mtx);
+
+	vrtc->accum_delta += delta_secs;
+	/*setting the interval time*/
+	ts.it_interval.tv_sec = 0;
+	ts.it_interval.tv_nsec = 0;
+	/*set the delay time it will be started when timer_setting*/
+	ts.it_value.tv_sec = RTC_CHG_VM_EVENT_DELAY_WINDOW;
+	ts.it_value.tv_nsec = 0;
+	clock_gettime(CLOCK_MONOTONIC, &vrtc->time_window_start);
+	acrn_timer_settime(&vrtc->vm_event_timer, &ts);
+
+
+	pthread_mutex_unlock(&vrtc->vm_event_mtx);
+}
+
+static void
+vrtc_vm_event_timer(void *arg, uint64_t nexp)
+{
+	struct vrtc *vrtc = arg;
+	struct vm_event event;
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event.event_data;
+	struct timespec now, delta;
+	struct timespec time_window_size = {RTC_CHG_VM_EVENT_DELAY_WINDOW, 0};
+
+	pthread_mutex_lock(&vrtc->vm_event_mtx);
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	delta = now;
+	timespecsub(&delta, &vrtc->time_window_start);
+	if (timespeccmp(&delta, &time_window_size, >=)) {
+		event.type = VM_EVENT_RTC_CHG;
+		data->delta_time_in_secs = vrtc->accum_delta;
+		if (dm_send_vm_event(&event) == 0) {
+			vrtc->accum_delta = 0;
+		}
+	} else {
+		/* there must be some racing problem, don't send this event */
+	}
+
+	pthread_mutex_unlock(&vrtc->vm_event_mtx);
+}
 
 static inline int
 divider_enabled(int reg_a)
@@ -734,6 +789,8 @@ vrtc_set_reg_b(struct vrtc *vrtc, uint8_t newval)
 				oldval, newval);
 	}
 
+	curtime = vrtc_curtime(vrtc, &basetime);
+
 	if (changed & RTCSB_HALT) {
 		if ((newval & RTCSB_HALT) == 0) {
 			rtctime = rtc_to_secs(vrtc);
@@ -743,7 +800,6 @@ vrtc_set_reg_b(struct vrtc *vrtc, uint8_t newval)
 					return -1;
 			}
 		} else {
-			curtime = vrtc_curtime(vrtc, &basetime);
 			if (curtime != vrtc->base_rtctime)
 				return -1;
 
@@ -763,6 +819,8 @@ vrtc_set_reg_b(struct vrtc *vrtc, uint8_t newval)
 		}
 		if (vrtc_time_update(vrtc, rtctime, basetime) != 0)
 			return -1;
+		else
+			send_rtc_chg_event(vrtc, rtctime - curtime);
 	}
 
 	/*
@@ -836,17 +894,6 @@ vrtc_set_reg_a(struct vrtc *vrtc, uint8_t newval)
 	} else {
 		/*Nothing to do*/
 	}
-}
-
-static void
-send_rtc_chg_event(uint8_t index, time_t secs)
-{
-	struct vm_event event;
-	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event.event_data;
-	event.type = VM_EVENT_RTC_CHG;
-	data->date_time_index = index;
-	data->time_in_secs = secs;
-	dm_send_vm_event(&event);
 }
 
 int
@@ -984,16 +1031,18 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 		 */
 		if (vrtc_is_time_register(offset)) {
 			if (!rtc_halted(vrtc)) {
+				time_t time_before = curtime;
 				curtime = rtc_to_secs(vrtc);
 				error = vrtc_time_update(vrtc, curtime, time(NULL));
 				if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
 					error = -1;
+				else
+					send_rtc_chg_event(vrtc, time_before - curtime);
 			}
 			/* We don't know when the Guest OS has finished the RTC change action.
 			 * So send an event each time the date/time regs has been updated.
 			 * The event handler will process those events.
 			 */
-			send_rtc_chg_event(offset, rtc_to_secs(vrtc));
 		}
 	}
 
@@ -1037,6 +1086,7 @@ vrtc_init(struct vmctx *ctx)
 	ctx->vrtc = vrtc;
 
 	pthread_mutex_init(&vrtc->mtx, NULL);
+	vpthread_mutex_init(&vrtc->vm_event_mtx, NULL);
 
 	/*
 	 * Report guest memory size in nvram cells as required by UEFI.
@@ -1133,6 +1183,9 @@ vrtc_init(struct vmctx *ctx)
 	vrtc->update_timer.clockid = CLOCK_MONOTONIC;
 	acrn_timer_init(&vrtc->update_timer, vrtc_update_timer, vrtc);
 	vrtc_start_timer(&vrtc->update_timer, 1, 0);
+
+	vrtc->event_timer.clockid = CLOCK_MONOTONIC;
+	acrn_timer_init(&vrtc->vm_event_timer, vrtc_vm_event_timer, vrtc);
 
 	return 0;
 
