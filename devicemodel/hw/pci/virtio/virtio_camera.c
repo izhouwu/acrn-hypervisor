@@ -727,7 +727,7 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		}
 
 		sprintf(camera_devs[camera_id].capture_buffers[buffer_count].uuid,
-				"cap_buffer_id%d",
+				"buffer_id%d",
 				buffer_count);
 		memcpy(response->u.buffer.uuid,
 			   camera_devs[camera_id].capture_buffers[buffer_count].uuid,
