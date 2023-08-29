@@ -86,9 +86,25 @@ void default_idle(__unused struct thread_object *obj)
 		} else if (need_shutdown_vm(pcpu_id)) {
 			shutdown_vm_from_idle(pcpu_id);
 		} else {
+#if 1
+			static int i=0;
+			if (pcpu_id == 1) {
+				printf("i");
+			}
+#endif
 			CPU_IRQ_ENABLE_ON_CONFIG();
 			cpu_do_idle();
 			CPU_IRQ_DISABLE_ON_CONFIG();
+#if 1			
+			if (pcpu_id == 1) {
+				printf("e");
+			}
+
+			if (pcpu_id == 1) {
+				if (i++ % 8 == 0)
+					printf("\n");
+			}
+#endif
 		}
 	}
 }

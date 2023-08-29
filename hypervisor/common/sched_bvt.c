@@ -137,10 +137,8 @@ static void sched_tick_handler(void *param)
 		data = (struct sched_bvt_data *)current->data;
 		/* only non-idle thread need to consume run_countdown */
 		if (!is_idle_thread(current)) {
-			data->run_countdown -= 1U;
-			if (data->run_countdown == 0U) {
-				make_reschedule_request(pcpu_id);
-			}
+			data->run_countdown = 0U;
+			make_reschedule_request(pcpu_id);
 		} else {
 			if (!list_empty(&bvt_ctl->runqueue)) {
 				make_reschedule_request(pcpu_id);
@@ -156,7 +154,7 @@ static void sched_tick_handler(void *param)
 static int sched_bvt_init(struct sched_control *ctl)
 {
 	struct sched_bvt_control *bvt_ctl = &per_cpu(sched_bvt_ctl, ctl->pcpu_id);
-	uint64_t tick_period = BVT_MCU_MS * TICKS_PER_MS;
+	//uint64_t tick_period = BVT_MCU_MS * TICKS_PER_MS;
 	int ret = 0;
 
 	ASSERT(ctl->pcpu_id == get_pcpu_id(), "Init scheduler on wrong CPU!");
@@ -166,12 +164,7 @@ static int sched_bvt_init(struct sched_control *ctl)
 
 	/* The tick_timer is periodically */
 	initialize_timer(&bvt_ctl->tick_timer, sched_tick_handler, ctl,
-			cpu_ticks() + tick_period, tick_period);
-
-	if (add_timer(&bvt_ctl->tick_timer) < 0) {
-		pr_err("Failed to add schedule tick timer!");
-		ret = -1;
-	}
+			0, 0);
 
 	return ret;
 }
@@ -239,6 +232,7 @@ static struct thread_object *sched_bvt_pick_next(struct sched_control *ctl)
 	struct thread_object *current = ctl->curr_obj;
 	uint64_t now_tsc = cpu_ticks();
 	uint64_t delta_mcu = 0U;
+	uint64_t tick_period = BVT_MCU_MS * TICKS_PER_MS;
 
 	if (!is_idle_thread(current)) {
 		update_vt(current);
@@ -272,6 +266,12 @@ static struct thread_object *sched_bvt_pick_next(struct sched_control *ctl)
 		}
 		first_data->start_tsc = now_tsc;
 		next = first_obj;
+		if (first_data->run_countdown != UINT64_MAX) {
+			del_timer(&bvt_ctl->tick_timer);
+			update_timer(&bvt_ctl->tick_timer, cpu_ticks() + first_data->run_countdown * tick_period, 0);
+
+			(void)add_timer(&bvt_ctl->tick_timer);
+		}
 	} else {
 		next = &get_cpu_var(idle);
 	}

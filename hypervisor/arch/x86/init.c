@@ -54,7 +54,7 @@ static void init_debug_post(uint16_t pcpu_id)
 }
 
 /*TODO: move into guest-vcpu module */
-static void init_guest_mode(uint16_t pcpu_id)
+void init_guest_mode(/*__unused*/ uint16_t pcpu_id)
 {
 	vmx_on();
 

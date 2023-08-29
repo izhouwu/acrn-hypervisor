@@ -266,15 +266,15 @@ static void vcpu_inject_exception(struct acrn_vcpu *vcpu)
 /* Inject external interrupt to guest */
 void vcpu_inject_extint(struct acrn_vcpu *vcpu)
 {
-	vcpu_make_request(vcpu, ACRN_REQUEST_EXTINT);
 	signal_event(&vcpu->events[VCPU_EVENT_VIRTUAL_INTERRUPT]);
+	vcpu_make_request(vcpu, ACRN_REQUEST_EXTINT);
 }
 
 /* Inject NMI to guest */
 void vcpu_inject_nmi(struct acrn_vcpu *vcpu)
 {
-	vcpu_make_request(vcpu, ACRN_REQUEST_NMI);
 	signal_event(&vcpu->events[VCPU_EVENT_VIRTUAL_INTERRUPT]);
+	vcpu_make_request(vcpu, ACRN_REQUEST_NMI);
 }
 
 /* Inject general protection exception(#GP) to guest */

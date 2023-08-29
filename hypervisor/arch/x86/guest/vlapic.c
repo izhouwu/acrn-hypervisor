@@ -1989,6 +1989,11 @@ static void vlapic_timer_expired(void *data)
 	vlapic = vcpu_vlapic(vcpu);
 	lapic = &(vlapic->apic_page);
 
+#if 0
+	if (pcpuid_from_vcpu(vcpu) == 1) {
+		printf("t");
+	}
+#endif
 	/* inject vcpu timer interrupt if not masked */
 	if (!vlapic_lvtt_masked(vlapic)) {
 		vlapic_set_intr(vcpu, lapic->lvt[APIC_LVT_TIMER].v & APIC_LVTT_VECTOR, LAPIC_TRIG_EDGE);

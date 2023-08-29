@@ -22,6 +22,7 @@
 #include <shell.h>
 #include <asm/guest/vmcs.h>
 #include <asm/host_pm.h>
+#include <asm/lapic.h>
 
 #define TEMP_STR_SIZE		60U
 #define MAX_STR_SIZE		256U
@@ -51,6 +52,7 @@ static int32_t shell_cpuid(int32_t argc, char **argv);
 static int32_t shell_reboot(int32_t argc, char **argv);
 static int32_t shell_rdmsr(int32_t argc, char **argv);
 static int32_t shell_wrmsr(int32_t argc, char **argv);
+static int32_t shell_kick1(int32_t argc, char **argv);
 
 static struct shell_cmd shell_cmds[] = {
 	{
@@ -155,6 +157,12 @@ static struct shell_cmd shell_cmds[] = {
 		.help_str	= SHELL_CMD_WRMSR_HELP,
 		.fcn		= shell_wrmsr,
 	},
+	{
+		.str		= "kick",
+		.cmd_param	= "111",
+		.help_str	= "222",
+		.fcn		= shell_kick1,
+	}
 };
 
 /* for function key: up/down/right/left/home/end and delete key */
@@ -1608,6 +1616,36 @@ static int32_t shell_wrmsr(int32_t argc, char **argv)
 	if (ret == 0) {
 		if (pcpu_id < get_pcpu_nums()) {
 			msr_write_pcpu(msr_index, val, pcpu_id);
+		} else {
+			shell_puts("pcpu id is out of range!\n");
+		}
+	}
+
+	return ret;
+}
+
+
+static int32_t shell_kick1(int32_t argc, char **argv)
+{
+	uint16_t pcpu_id = 0;
+	int32_t ret = 0;
+	
+		pcpu_id = get_pcpu_id();
+
+	switch (argc) {
+	case 2:
+		/* wrmsr -p<PCPU_ID> <MSR_INDEX> <VALUE>*/
+		if ((argv[1][0] == '-') && (argv[1][1] == 'p')) {
+			pcpu_id = (uint16_t)strtol_deci(&(argv[1][2]));
+		}
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	if (ret == 0) {
+		if (pcpu_id < get_pcpu_nums()) {
+			kick_pcpu(pcpu_id);
 		} else {
 			shell_puts("pcpu id is out of range!\n");
 		}

@@ -708,3 +708,6 @@ void vrtc_init(struct acrn_vm *vm)
 		vm->vrtc.base_tsc = cpu_ticks();
 	}
 }
+
+
+

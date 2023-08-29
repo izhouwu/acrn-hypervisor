@@ -704,6 +704,8 @@ int32_t create_vm(uint16_t vm_id, uint64_t pcpu_bitmap, struct acrn_vm_config *v
 	(void)memcpy_s(&vm->name[0], MAX_VM_NAME_LEN, &vm_config->name[0], MAX_VM_NAME_LEN);
 
 	if (is_service_vm(vm)) {
+		vm_config->guest_flags |= GUEST_FLAG_PMU_PASSTHROUGH;
+		//vm_config->guest_flags |= GUEST_FLAG_VHWP;
 		/* Only for Service VM */
 		create_service_vm_e820(vm);
 		prepare_service_vm_memmap(vm);

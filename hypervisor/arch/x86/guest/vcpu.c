@@ -797,6 +797,9 @@ void kick_vcpu(struct acrn_vcpu *vcpu)
 	uint16_t pcpu_id = pcpuid_from_vcpu(vcpu);
 
 	if ((get_pcpu_id() != pcpu_id) && (per_cpu(vmcs_run, pcpu_id) == vcpu->arch.vmcs)) {
+//		if (pcpu_id == 1) {
+//			printf("k");
+//		}
 		kick_pcpu(pcpu_id);
 	}
 }

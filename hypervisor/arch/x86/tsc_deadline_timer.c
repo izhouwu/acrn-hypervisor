@@ -17,6 +17,11 @@
 /* run in interrupt context */
 static void timer_expired_handler(__unused uint32_t irq, __unused void *data)
 {
+#if 0	
+	if (get_pcpu_id() == 1) {
+		printf("q");
+	}
+#endif
 	fire_softirq(SOFTIRQ_TIMER);
 }
 

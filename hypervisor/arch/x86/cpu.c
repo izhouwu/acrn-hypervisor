@@ -460,9 +460,25 @@ void stop_pcpus(void)
 	wait_pcpus_offline(mask);
 }
 
+static
+inline void asm_monitor(volatile const uint64_t *addr, uint64_t ecx, uint64_t edx)
+{
+	asm volatile("monitor\n" : : "a" (addr), "c" (ecx), "d" (edx));
+}
+
+static
+inline void asm_mwait(uint64_t eax, uint64_t ecx)
+{
+	asm volatile("mwait\n" : : "a" (eax), "c" (ecx));
+}
+
 void cpu_do_idle(void)
 {
-	asm_pause();
+	//static uint64_t sync;
+	asm_hlt();
+	//asm_pause();
+	//asm_monitor(&sync, 0, 0);
+	//asm_mwait(0x20, 0);
 }
 
 /**
@@ -510,18 +526,6 @@ static void print_hv_banner(void)
 
 	/* Print the boot message */
 	printf(boot_msg);
-}
-
-static
-inline void asm_monitor(volatile const uint64_t *addr, uint64_t ecx, uint64_t edx)
-{
-	asm volatile("monitor\n" : : "a" (addr), "c" (ecx), "d" (edx));
-}
-
-static
-inline void asm_mwait(uint64_t eax, uint64_t ecx)
-{
-	asm volatile("mwait\n" : : "a" (eax), "c" (ecx));
 }
 
 /* wait until *sync == wake_sync */
