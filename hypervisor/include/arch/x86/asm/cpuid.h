@@ -78,6 +78,8 @@
 #define CPUID_EAX_DTS           (1U<<0U)
 /* CPUID.06H:EAX.PLN */
 #define CPUID_EAX_PLN           (1U<<4U)
+/* CPUID.06H:EAX.ECMD */
+#define CPUID_EAX_ECMD          (1U<<5U)
 /* CPUID.06H:EAX.PTM */
 #define CPUID_EAX_PTM           (1U<<6U)
 /* CPUID.06H:EAX.HWP */
