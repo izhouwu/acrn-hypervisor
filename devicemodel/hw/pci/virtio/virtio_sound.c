@@ -86,6 +86,7 @@
 enum {
 	VIRTIO_SND_BE_INITED = 1,
 	VIRTIO_SND_BE_PRE,
+	VIRTIO_SND_BE_PENDING,
 	VIRTIO_SND_BE_START,
 	VIRTIO_SND_BE_STOP,
 	VIRTIO_SND_BE_RELEASE,
@@ -128,8 +129,10 @@ struct virtio_sound_pcm {
 	int hda_fn_nid;
 	int dir;
 	int status;
+	pthread_mutex_t ctl_mtx;
 	int xfer_iov_cnt;
 	int id;
+
 
 	pthread_t tid;
 	struct pollfd *poll_fd;
@@ -193,6 +196,8 @@ static int virtio_sound_cfgread(void *vdev, int offset, int size, uint32_t *retv
 static int virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *event);
 static int virtio_sound_event_callback(snd_hctl_elem_t *helem, unsigned int mask);
 static void virtio_sound_reset(void *vdev);
+static int virtio_sound_create_pcm_thread(struct virtio_sound_pcm *stream);
+static int virtio_sound_xfer(struct virtio_sound_pcm *stream);
 
 static struct virtio_sound *vsound = NULL;
 
@@ -333,7 +338,7 @@ virtio_sound_notify_xfer(struct virtio_sound *virt_snd, struct virtio_vq_info *v
 {
 	struct virtio_sound_msg_node *msg_node;
 	struct virtio_snd_pcm_xfer *xfer_hdr;
-	int n, s;
+	int n, s = -1, i;
 
 	while (vq_has_descs(vq)) {
 		msg_node = malloc(sizeof(struct virtio_sound_msg_node));
@@ -370,6 +375,28 @@ virtio_sound_notify_xfer(struct virtio_sound *virt_snd, struct virtio_vq_info *v
 			STAILQ_INSERT_TAIL(&virt_snd->streams[s]->head, msg_node, link);
 		}
 		pthread_mutex_unlock(&virt_snd->streams[s]->mtx);
+	}
+	if (s >= 0) {
+		pthread_mutex_lock(&virt_snd->streams[s]->ctl_mtx);
+		if (virt_snd->streams[s]->status == VIRTIO_SND_BE_PENDING) {
+			for (i = 0; i < 2; i++) {
+				if (virtio_sound_xfer(virt_snd->streams[s]) < 0) {
+					pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
+					WPRINTF("%s: stream fn_id %d xfer error!\n", __func__,
+						virt_snd->streams[s]->hda_fn_nid);
+				}
+			}
+			if (snd_pcm_start(virt_snd->streams[s]->handle) < 0) {
+				pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
+				WPRINTF("%s: stream %s start error!\n", __func__, virt_snd->streams[s]->dev_name);
+			}
+			virt_snd->streams[s]->status = VIRTIO_SND_BE_START;
+			if (virtio_sound_create_pcm_thread(virt_snd->streams[s]) < 0) {
+				pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
+				WPRINTF("%s: create thread fail!\n", __func__);
+			}
+		}
+		pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 	}
 }
 
@@ -712,7 +739,7 @@ virtio_sound_pcm_thread(void *param)
 	if (stream->status == VIRTIO_SND_BE_RELEASE && !STAILQ_EMPTY(&stream->head)) {
 		virtio_sound_clean_vq(stream);
 	}
-
+	pthread_mutex_lock(&stream->ctl_mtx);
 	if(stream->handle) {
 		if (snd_pcm_close(stream->handle) < 0) {
 			WPRINTF("%s: stream %s close error!\n", __func__, stream->dev_name);
@@ -722,6 +749,7 @@ virtio_sound_pcm_thread(void *param)
 	free(stream->poll_fd);
 	stream->poll_fd = NULL;
 	stream->status = VIRTIO_SND_BE_INITED;
+	pthread_mutex_unlock(&stream->ctl_mtx);
 	pthread_exit(NULL);
 }
 
@@ -731,6 +759,10 @@ virtio_sound_create_pcm_thread(struct virtio_sound_pcm *stream)
 	int err;
 	pthread_attr_t attr;
 
+	/* PCM thread for this stream created. */
+	if (stream->poll_fd != NULL) {
+		return 0;
+	}
 	stream->pfd_count = snd_pcm_poll_descriptors_count(stream->handle);
 	stream->poll_fd = malloc(sizeof(struct pollfd) * stream->pfd_count);
 	if (stream->poll_fd == NULL) {
@@ -982,7 +1014,9 @@ virtio_sound_r_pcm_prepare(struct virtio_sound *virt_snd, struct iovec *iov, uin
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
+	pthread_mutex_lock(&virt_snd->streams[s]->ctl_mtx);
 	if (virt_snd->streams[s]->status == VIRTIO_SND_BE_RELEASE) {
+		pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 		WPRINTF("%s: stream %d is releasing!\n", __func__, s);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
@@ -991,18 +1025,21 @@ virtio_sound_r_pcm_prepare(struct virtio_sound *virt_snd, struct iovec *iov, uin
 	if(!virt_snd->streams[s]->handle)
 		if (snd_pcm_open(&virt_snd->streams[s]->handle, virt_snd->streams[s]->dev_name,
 			virt_snd->streams[s]->dir, SND_PCM_NONBLOCK) < 0  || virt_snd->streams[s]->handle == NULL) {
+			pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 			WPRINTF("%s: stream %s open fail!\n", __func__, virt_snd->streams[s]->dev_name);
 			ret->code = VIRTIO_SND_S_BAD_MSG;
 			return (int)iov[1].iov_len;
 		}
 
 	if (snd_pcm_prepare(virt_snd->streams[s]->handle) < 0) {
+		pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 		WPRINTF("%s: stream %s prepare fail!\n", __func__, virt_snd->streams[s]->dev_name);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 
 	virt_snd->streams[s]->status = VIRTIO_SND_BE_PRE;
+	pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 	return (int)iov[1].iov_len;
 }
 
@@ -1022,7 +1059,9 @@ virtio_sound_r_pcm_release(struct virtio_sound *virt_snd, struct iovec *iov, uin
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
+	pthread_mutex_lock(&virt_snd->streams[s]->ctl_mtx);
 	virt_snd->streams[s]->status = VIRTIO_SND_BE_RELEASE;
+	pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 	ret->code = VIRTIO_SND_S_OK;
 	virtio_sound_update_iov_cnt(virt_snd, virt_snd->streams[s]->dir);
 
@@ -1049,12 +1088,19 @@ virtio_sound_r_pcm_start(struct virtio_sound *virt_snd, struct iovec *iov, uint8
 
 	ret->code = VIRTIO_SND_S_OK;
 	stream = virt_snd->streams[pcm->stream_id];
+	pthread_mutex_lock(&stream->ctl_mtx);
 	if (stream->status == VIRTIO_SND_BE_RELEASE) {
+		pthread_mutex_unlock(&stream->ctl_mtx);
 		WPRINTF("%s: stream %d is releasing!\n", __func__, stream->id);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
 	if (stream->dir == SND_PCM_STREAM_PLAYBACK) {
+		if (STAILQ_EMPTY(&stream->head)) {
+			stream->status = VIRTIO_SND_BE_PENDING;
+			pthread_mutex_unlock(&stream->ctl_mtx);
+			return (int)iov[1].iov_len;
+		}
 		/*
 		 * For start threshold is 1, send 2 period before start.
 		 * Less start periods benifit the frontend hw_ptr updating.
@@ -1064,23 +1110,25 @@ virtio_sound_r_pcm_start(struct virtio_sound *virt_snd, struct iovec *iov, uint8
 		 */
 		for (i = 0; i < 2; i++) {
 			if (virtio_sound_xfer(stream) < 0) {
+				pthread_mutex_unlock(&stream->ctl_mtx);
 				WPRINTF("%s: stream fn_id %d xfer error!\n", __func__, stream->hda_fn_nid);
 				ret->code = VIRTIO_SND_S_BAD_MSG;
 				return (int)iov[1].iov_len;
 			}
 		}
 	}
+	if (snd_pcm_start(stream->handle) < 0) {
+		pthread_mutex_unlock(&stream->ctl_mtx);
+		WPRINTF("%s: stream %s start error!\n", __func__, stream->dev_name);
+		ret->code = VIRTIO_SND_S_BAD_MSG;
+		return (int)iov[1].iov_len;
+	}
 	stream->status = VIRTIO_SND_BE_START;
 	if (virtio_sound_create_pcm_thread(stream) < 0) {
 		WPRINTF("%s: create thread fail!\n", __func__);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 	}
-
-	if (snd_pcm_start(stream->handle) < 0) {
-		WPRINTF("%s: stream %s start error!\n", __func__, stream->dev_name);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[1].iov_len;
-	}
+	pthread_mutex_unlock(&stream->ctl_mtx);
 
 	return (int)iov[1].iov_len;
 }
@@ -1102,10 +1150,12 @@ virtio_sound_r_pcm_stop(struct virtio_sound *virt_snd, struct iovec *iov, uint8_
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
+	pthread_mutex_lock(&virt_snd->streams[s]->ctl_mtx);
 	if (virt_snd->streams[s]->handle != NULL && snd_pcm_drop(virt_snd->streams[s]->handle) < 0) {
 		WPRINTF("%s: stream %s drop error!\n", __func__, virt_snd->streams[s]->dev_name);
 	}
 	virt_snd->streams[s]->status = VIRTIO_SND_BE_STOP;
+	pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 
 	ret->code = VIRTIO_SND_S_OK;
 	return (int)iov[1].iov_len;
@@ -1734,7 +1784,13 @@ virtio_sound_pcm_init(struct virtio_sound *virt_snd, char *device, char *hda_fn_
 		free(stream);
 		return -1;
 	}
-
+	err = pthread_mutex_init(&stream->ctl_mtx, NULL);
+	if (err) {
+		WPRINTF("%s: mutex init failed with error %d!\n", __func__, err);
+		pthread_mutex_destroy(&stream->mtx);
+		free(stream);
+		return -1;
+	}
 	return 0;
 }
 
@@ -2198,7 +2254,6 @@ virtio_sound_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 {
 	struct virtio_sound *virt_snd = (struct virtio_sound *)dev->arg;
 	int s, i;
-
 	virt_snd->status = VIRTIO_SND_BE_DEINITED;
 	for (s = 0; s < virt_snd->stream_cnt; s++) {
 		if (virt_snd->streams[s]->handle && snd_pcm_close(virt_snd->streams[s]->handle) < 0) {
@@ -2208,6 +2263,7 @@ virtio_sound_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 		for (i = 0; i < virt_snd->streams[s]->chmap_cnt; i++) {
 			free(virt_snd->streams[s]->chmaps[i]);
 		}
+		pthread_mutex_destroy(&virt_snd->streams[s]->ctl_mtx);
 		free(virt_snd->streams[s]);
 	}
 	pthread_mutex_destroy(&virt_snd->mtx);
