@@ -235,7 +235,6 @@ class SharedMemoryRegions:
 class VirtioDevices(object):
     def __init__(self, old_xml_etree):
         self.gpu = []
-        self.blocks = []
         self.inputs = []
         self.networks = []
         self.consoles = []
@@ -271,47 +270,45 @@ class VirtioDevices(object):
                     monitor_id = display.xpath("./monitor_id")[0].text if display.xpath("./monitor_id") else None
                     self.gpu.append((display_type, monitor_id))
 
-    def format_console_element(self, console):
-        node = etree.Element("console")
-        if console[0] is not None:
-            etree.SubElement(node, "use_type").text = console[0]
-        if console[1] is not None:
-            etree.SubElement(node, "backend_type").text = console[1]
-        if console[1] == "socket":
-            etree.SubElement(node, "sock_file_path").text = console[2]
-        if console[1] == "tty":
-            etree.SubElement(node, "tty_device_path").text = console[2]
-        if console[1] == "file":
-            etree.SubElement(node, "output_file_path").text = console[2]
+    def format_console_element(self):
+        for console in self.consoles:
+            node = etree.Element("console")
+            if console[0] is not None:
+                etree.SubElement(node, "use_type").text = console[0]
+            if console[1] is not None:
+                etree.SubElement(node, "backend_type").text = console[1]
+            if console[1] == "socket":
+                etree.SubElement(node, "sock_file_path").text = console[2]
+            if console[1] == "tty":
+                etree.SubElement(node, "tty_device_path").text = console[2]
+            if console[1] == "file":
+                etree.SubElement(node, "output_file_path").text = console[2]
         return node
 
-    def format_network_element(self, network):
-        node = etree.Element("network")
-        if network[0] is not None:
-            etree.SubElement(node, "virtio_framework").text = network[0]
-        if network[1] is not None:
-            etree.SubElement(node, "interface_name").text = network[1]
+    def format_network_element(self):
+        for network in self.networks:
+            node = etree.Element("network")
+            if network[0] is not None:
+                etree.SubElement(node, "virtio_framework").text = network[0]
+            if network[1] is not None:
+                etree.SubElement(node, "interface_name").text = network[1]
         return node
 
-    def format_input_element(self, input):
-        node = etree.Element("input")
-        if input[0] is not None:
-            etree.SubElement(node, "backend_device_file").text = input[0]
-        if input[1] is not None:
-            etree.SubElement(node, "id").text = input[1]
+    def format_input_element(self):
+        for input in self.inputs:
+            node = etree.Element("input")
+            if input[0] is not None:
+                etree.SubElement(node, "backend_device_file").text = input[0]
+            if input[1] is not None:
+                etree.SubElement(node, "id").text = input[1]
         return node
 
-    def format_block_element(self, block):
-        node = etree.Element("block")
-        node.text = block
-        return node
-
-    def format_gpu_element(self, displays):
+    def format_gpu_element(self):
         node = etree.Element("gpu")
-        if len(displays) > 0:
-            etree.SubElement(node, "display_type").text = displays[0][0]
+        if len(self.gpu) > 0:
+            etree.SubElement(node, "display_type").text = self.gpu[0][0]
             displays_node = etree.SubElement(node, "displays")
-            for display in displays:
+            for display in self.gpu:
                 if display[0] == "Window":
                     display_node = etree.SubElement(displays_node, "display")
                     etree.SubElement(display_node, "window_resolutions").text = display[1]
@@ -322,46 +319,27 @@ class VirtioDevices(object):
                     etree.SubElement(display_node, "monitor_id").text = display[1]
         return node
 
-    def format_xml_element(self):
-        node = etree.Element("virtio_devices")
-        for console in self.consoles:
-            node.append(self.format_console_element(console))
-        for network in self.networks:
-            node.append(self.format_network_element(network))
-        for input in self.inputs:
-            node.append(self.format_input_element(input))
-        for block in self.blocks:
-            node.append(self.format_block_element(block))
-
-        node.append(self.format_gpu_element(self.gpu))
-        return node
-
-    def add_virtio_devices(self, virtio_device_node):
-        if virtio_device_node.xpath("./network")[0].text is not None:
-            for network in virtio_device_node.xpath("./network"):
-                self.networks.append((None, network.text))
-        else:
-            for network in virtio_device_node.xpath("./network"):
-                virtio_framework = network.xpath("./virtio_framework")[0].text if network.xpath("./virtio_framework") else None
-                interface_name = network.xpath("./interface_name")[0].text if network.xpath("./interface_name") else None
+    def add_virtio_devices(self, virtio_device_node, tag=None):
+        if tag == 'network':
+            if virtio_device_node.xpath("./virtio_framework") is not None:
+                virtio_framework = virtio_device_node.xpath("./virtio_framework")[0].text if virtio_device_node.xpath("./virtio_framework") else None
+                interface_name = virtio_device_node.xpath("./interface_name")[0].text if virtio_device_node.xpath("./interface_name") else None
                 self.networks.append((virtio_framework, interface_name))
-
-        if len(virtio_device_node.xpath("./input")) > 0:
-            if virtio_device_node.xpath("./input")[0].text is not None:
-                for input in virtio_device_node.xpath("./input"):
-                    self.inputs.append((None, input.text))
             else:
-                for input in virtio_device_node.xpath("./input"):
-                    backend_device_file = input.xpath("./backend_device_file")[0].text if input.xpath("./backend_device_file") else None
-                    id = input.xpath("./id")[0].text if input.xpath("./id") else None
-                    self.inputs.append((backend_device_file, id))
+                self.networks.append((None, network.text))
 
-        for console in virtio_device_node.xpath("./console"):
-            self.console_encoding(console)
-        for block in virtio_device_node.xpath("./block"):
-            self.blocks.append(block.text)
-        for gpu in virtio_device_node.xpath("./gpu"):
-            self.gpu_encoding(gpu)
+        if tag == 'input':
+            if virtio_device_node.xpath("./backend_device_file") is not None:
+                backend_device_file = virtio_device_node.xpath("./backend_device_file")[0].text if virtio_device_node.xpath("./backend_device_file") else None
+                id = virtio_device_node.xpath("./id")[0].text if virtio_device_node.xpath("./id") else None
+                self.inputs.append((backend_device_file, id))
+            else:
+                self.inputs.append((None, input.text))
+
+        if tag == 'console':
+            self.console_encoding(virtio_device_node)
+        if tag == 'gpu':
+            self.gpu_encoding(virtio_device_node)
 
 class ScenarioUpgrader(ScenarioTransformer):
     @classmethod
@@ -426,18 +404,45 @@ class ScenarioUpgrader(ScenarioTransformer):
             self.move_data_by_xpath(".//BUILD_TYPE", xsd_element_node, xml_parent_node, new_nodes)
         return False
 
-    def move_virtio_devices(self, xsd_element_node, xml_parent_node, new_nodes):
+    def move_virtio_gpu(self, xsd_element_node, xml_parent_node, new_nodes):
         virtio = VirtioDevices(self.old_xml_etree)
         try:
-            old_data_virtio = self.get_from_old_data(xml_parent_node, ".//virtio_devices").pop()
+            old_data_virtio = self.get_from_old_data(xml_parent_node, ".//gpu").pop()
         except IndexError as e:
             logging.debug(e)
             return
 
-        virtio.add_virtio_devices(old_data_virtio)
+        virtio.add_virtio_devices(old_data_virtio, tag="gpu")
         for child in old_data_virtio.iter():
             self.old_data_nodes.discard(child)
-        new_nodes.append(virtio.format_xml_element())
+        new_nodes.append(virtio.format_gpu_element())
+        return False
+
+    def move_virtio_console(self, xsd_element_node, xml_parent_node, new_nodes):
+        virtio = VirtioDevices(self.old_xml_etree)
+        for console in iter(self.get_from_old_data(xml_parent_node, ".//console")):
+            virtio.add_virtio_devices(console, tag="console")
+            for child in console.iter():
+                self.old_data_nodes.discard(child)
+            new_nodes.append(virtio.format_console_element())
+        return False
+
+    def move_virtio_network(self, xsd_element_node, xml_parent_node, new_nodes):
+        virtio = VirtioDevices(self.old_xml_etree)
+        for network in iter(self.get_from_old_data(xml_parent_node, ".//network")):
+            virtio.add_virtio_devices(network, tag="network")
+            for child in network.iter():
+                self.old_data_nodes.discard(child)
+            new_nodes.append(virtio.format_network_element())
+        return False
+
+    def move_virtio_input(self, xsd_element_node, xml_parent_node, new_nodes):
+        virtio = VirtioDevices(self.old_xml_etree)
+        for input in iter(self.get_from_old_data(xml_parent_node, ".//input")):
+            virtio.add_virtio_devices(input, tag="input")
+            for child in input.iter():
+                self.old_data_nodes.discard(child)
+            new_nodes.append(virtio.format_input_element())
         return False
 
     def move_memory(self, xsd_element_node, xml_parent_node, new_nodes):
@@ -817,7 +822,11 @@ class ScenarioUpgrader(ScenarioTransformer):
         "IVSHMEM": move_ivshmem,
         "vm_type": move_vm_type,
         "os_type": move_os_type,
-        "virtio_devices": move_virtio_devices,
+        "gpu": move_virtio_gpu,
+        "network": move_virtio_network,
+        "console": move_virtio_console,
+        "input": move_virtio_input,
+        "camera": move_hierarchy,
         "memory": move_memory,
 
         "CACHE_REGION": move_hierarchy,
