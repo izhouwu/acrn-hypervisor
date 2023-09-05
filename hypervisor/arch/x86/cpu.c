@@ -462,7 +462,15 @@ void stop_pcpus(void)
 
 void cpu_do_idle(void)
 {
+#ifdef CONFIG_KEEP_IRQ_DISABLED
 	asm_pause();
+#else
+	if (get_cpu_var(mode_to_idle) == IDLE_MODE_HLT) {
+		asm_safe_hlt();
+	} else {
+		asm_pause();
+	}
+#endif
 }
 
 /**

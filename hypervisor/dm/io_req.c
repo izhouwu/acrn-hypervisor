@@ -254,7 +254,13 @@ int32_t acrn_insert_request(struct acrn_vcpu *vcpu, const struct io_request *io_
 				}
 			}
 		} else {
+			if (!is_lapic_pt_enabled(vcpu)) {
+				CPU_IRQ_DISABLE_ON_CONFIG();
+			}
 			wait_event(&vcpu->events[VCPU_EVENT_IOREQ]);
+			if (!is_lapic_pt_enabled(vcpu)) {
+				CPU_IRQ_ENABLE_ON_CONFIG();
+			}
 		}
 	} else {
 		ret = -EINVAL;
