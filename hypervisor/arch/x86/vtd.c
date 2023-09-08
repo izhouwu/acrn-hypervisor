@@ -131,6 +131,7 @@ struct dmar_drhd_rt {
 	/* MAX_IR_ENTRIES is roundup (to power of 2) of CONFIG_MAX_PT_IRQ_ENTRIES. */
 	uint64_t irte_alloc_bitmap[MAX_IR_ENTRIES / 64U];
 	uint64_t irte_reserved_bitmap[MAX_IR_ENTRIES / 64U];
+	uint32_t desc_status;
 	uint64_t qi_queue;
 	uint16_t qi_tail;
 
@@ -544,7 +545,6 @@ static struct dmar_drhd_rt *device_to_dmaru(uint8_t bus, uint8_t devfun)
 static void dmar_issue_qi_request(struct dmar_drhd_rt *dmar_unit, struct dmar_entry invalidate_desc)
 {
 	struct dmar_entry *invalidate_desc_ptr;
-	uint32_t qi_status = 0U;
 	uint64_t start;
 
 	spinlock_obtain(&(dmar_unit->lock));
@@ -557,15 +557,18 @@ static void dmar_issue_qi_request(struct dmar_drhd_rt *dmar_unit, struct dmar_en
 
 	invalidate_desc_ptr++;
 
-	invalidate_desc_ptr->hi_64 = hva2hpa(&qi_status);
+	/* FIXME: pls use local variables instead, but solve the stack memory
+	 * being overwritten issue
+	 */
+	invalidate_desc_ptr->hi_64 = hva2hpa(&dmar_unit->desc_status);
 	invalidate_desc_ptr->lo_64 = DMAR_INV_WAIT_DESC_LOWER;
 	dmar_unit->qi_tail = (dmar_unit->qi_tail + DMAR_QI_INV_ENTRY_SIZE) % DMAR_INVALIDATION_QUEUE_SIZE;
 
-	qi_status = DMAR_INV_STATUS_INCOMPLETE;
+	dmar_unit->desc_status = DMAR_INV_STATUS_INCOMPLETE;
 	iommu_write32(dmar_unit, DMAR_IQT_REG, dmar_unit->qi_tail);
 
 	start = cpu_ticks();
-	while (qi_status != DMAR_INV_STATUS_COMPLETED) {
+	while (dmar_unit->desc_status != DMAR_INV_STATUS_COMPLETED) {
 		if ((cpu_ticks() - start) > TICKS_PER_MS) {
 			pr_err("DMAR OP Timeout! @ %s", __func__);
 			break;
