@@ -420,16 +420,31 @@ struct cfg_header_perm {
 	 * If bit x is set the ro_mask, it indicates that the corresponding 4 Bytes register
 	 * for bit x is read-only. Otherwise, it's writable.
 	 */
-	uint32_t pt_mask;
-	uint32_t ro_mask;
+	/* For type 0 device */
+	uint32_t type0_pt_mask;
+	uint32_t type0_ro_mask;
+	/* For type 1 device */
+	uint32_t type1_pt_mask;
+	uint32_t type1_ro_mask;
 };
 
 static const struct cfg_header_perm cfg_hdr_perm = {
 	/* Only Command (0x04-0x05) and Status (0x06-0x07) Registers are pass through */
-	.pt_mask = 0x0002U,
+	.type0_pt_mask = 0x0002U,
 	/* Command (0x04-0x05) and Status (0x06-0x07) Registers and
 	 * Base Address Registers (0x10-0x27) are writable */
-	.ro_mask = (uint16_t)~0x03f2U
+	.type0_ro_mask = (uint16_t)~0x03f2U,
+	/* Command (0x04-0x05) and Status (0x06-0x07) Registers and
+	 * from Primary Bus Number to I/O Base Limit 16 Bits (0x18-0x33)
+	 * are pass through
+	 */
+	.type1_pt_mask = 0x1fc2U,
+	/* Command (0x04-0x05) and Status (0x06-0x07) Registers and
+	 * Base Address Registers (0x10-0x17) and
+	 * Secondary Status (0x1e-0x1f) are writable
+	 * Note: should handle I/O Base (0x1c) specially
+	 */
+	.type1_ro_mask = (uint16_t)~0xb2U,
 };
 
 
@@ -440,6 +455,7 @@ static int32_t read_cfg_header(const struct pci_vdev *vdev,
 		uint32_t offset, uint32_t bytes, uint32_t *val)
 {
 	int32_t ret = 0;
+	uint32_t pt_mask;
 
 	if ((offset == PCIR_BIOS) && is_quirk_ptdev(vdev)) {
 		/* the access of PCIR_BIOS is emulated for quirk_ptdev */
@@ -452,8 +468,13 @@ static int32_t read_cfg_header(const struct pci_vdev *vdev,
 			*val = ~0U;
 		}
 	} else {
-		/* ToDo: add cfg_hdr_perm for Type 1 device */
-		if (bitmap32_test(((uint16_t)offset) >> 2U, &cfg_hdr_perm.pt_mask)) {
+		if (is_bridge(vdev->pdev)) {
+			pt_mask = cfg_hdr_perm.type1_pt_mask;
+		} else {
+			pt_mask = cfg_hdr_perm.type0_pt_mask;
+		}
+
+		if (bitmap32_test(((uint16_t)offset) >> 2U, &pt_mask)) {
 			*val = pci_pdev_read_cfg(vdev->pdev->bdf, offset, bytes);
 
 			/* MSE(Memory Space Enable) bit always be set for an assigned VF */
@@ -474,7 +495,9 @@ static int32_t read_cfg_header(const struct pci_vdev *vdev,
 static int32_t write_cfg_header(struct pci_vdev *vdev,
 		uint32_t offset, uint32_t bytes, uint32_t val)
 {
+	bool dev_is_bridge = is_bridge(vdev->pdev);
 	int32_t ret = 0;
+	uint32_t pt_mask, ro_mask;
 
 	if ((offset == PCIR_BIOS) && is_quirk_ptdev(vdev)) {
 		/* the access of PCIR_BIOS is emulated for quirk_ptdev */
@@ -489,17 +512,42 @@ static int32_t write_cfg_header(struct pci_vdev *vdev,
 #define PCIM_SPACE_EN (PCIM_CMD_PORTEN | PCIM_CMD_MEMEN)
 			uint16_t phys_cmd = (uint16_t)pci_pdev_read_cfg(vdev->pdev->bdf, PCIR_COMMAND, 2U);
 
-			/* check whether need to restore BAR because some kind of reset */
-			if (((phys_cmd & PCIM_SPACE_EN) == 0U) && ((val & PCIM_SPACE_EN) != 0U) &&
-					pdev_need_bar_restore(vdev->pdev)) {
-				pdev_restore_bar(vdev->pdev);
+			if (((phys_cmd & PCIM_SPACE_EN) == 0U) && ((val & PCIM_SPACE_EN) != 0U)) {
+				/* check whether need to restore BAR because some kind of reset */
+				if (pdev_need_bar_restore(vdev->pdev)) {
+					pdev_restore_bar(vdev->pdev);
+				}
+
+				/* check whether need to restore bridge mem/IO related registers because some kind of reset */
+				if (dev_is_bridge) {
+					vdev_bridge_pt_restore_space(vdev);
+				}
+			}
+			/* check whether need to restore Primary/Secondary/Subordinate Bus Number registers because some kind of reset */
+			if (dev_is_bridge && ((phys_cmd & PCIM_CMD_BUSEN) == 0U) && ((val & PCIM_CMD_BUSEN) != 0U)) {
+				vdev_bridge_pt_restore_bus(vdev);
 			}
 		}
 
-		/* ToDo: add cfg_hdr_perm for Type 1 device */
-		if (!bitmap32_test(((uint16_t)offset) >> 2U, &cfg_hdr_perm.ro_mask)) {
-			if (bitmap32_test(((uint16_t)offset) >> 2U, &cfg_hdr_perm.pt_mask)) {
-				pci_pdev_write_cfg(vdev->pdev->bdf, offset, bytes, val);
+		if (dev_is_bridge) {
+			ro_mask = cfg_hdr_perm.type1_ro_mask;
+			pt_mask = cfg_hdr_perm.type1_pt_mask;
+		} else {
+			ro_mask = cfg_hdr_perm.type0_ro_mask;
+			pt_mask = cfg_hdr_perm.type0_pt_mask;
+		}
+
+		if (!bitmap32_test(((uint16_t)offset) >> 2U, &ro_mask)) {
+			if (bitmap32_test(((uint16_t)offset) >> 2U, &pt_mask)) {
+				/* I/O Base (0x1c) and I/O Limit (0x1d) are read-only */
+				if (!((offset == PCIR_IO_BASE) && (bytes <= 2)) && (offset != PCIR_IO_LIMIT)) {
+					uint32_t value = val;
+					if ((offset == PCIR_IO_BASE) && (bytes == 4U)) {
+						uint16_t phys_val = (uint16_t)pci_pdev_read_cfg(vdev->pdev->bdf, offset, 2U);
+						value = (val & PCIR_SECSTATUS_LINE_MASK) | phys_val;
+					}
+					pci_pdev_write_cfg(vdev->pdev->bdf, offset, bytes, value);
+				}
 			} else {
 				pci_vdev_write_vcfg(vdev, offset, bytes, val);
 			}
