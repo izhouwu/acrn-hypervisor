@@ -64,35 +64,13 @@ struct acrn_vm_pci_dev_config *init_one_dev_config(struct pci_pdev *pdev)
 					dev_config->vdev_ops = &vpci_bridge_ops;
 				} else if (is_host_bridge(pdev)) {
 					dev_config->vdev_ops = &vhostbridge_ops;
-				} else if (is_pci_cfg_multifunction(pdev->hdr_type) && (pdev->bdf.bits.f == 0U)) {
-					/*
-					 * for multifunction device at function 0, emulate a dummy
-					 * multifunction dev, otherwise sub-functions will be lost.
-					 */
-					dev_config->emu_type = PCI_DEV_TYPE_DUMMY_MF_EMUL;
-					dev_config->vdev_ops = &vpci_mf_dev_ops;
 				} else {
 					/* May have type0 device, E.g. debug pci uart */
-					dev_config->emu_type = PCI_DEV_TYPE_NONE;
 				}
 			} else {
 				dev_config->emu_type = PCI_DEV_TYPE_PTDEV;
 			}
-		} else {
-			/*
-			 * for pdev which allocated to prelaunched VM, we also need to check
-			 * whether it isa multifuction dev at function 0. If yes we have to
-			 * emulate a dummy function dev in Service VM.
-			 */
-			if (is_pci_cfg_multifunction(pdev->hdr_type) && (pdev->bdf.bits.f == 0U)) {
-				dev_config->emu_type = PCI_DEV_TYPE_DUMMY_MF_EMUL;
-				dev_config->vdev_ops = &vpci_mf_dev_ops;
-			} else {
-				dev_config->emu_type = PCI_DEV_TYPE_NONE;
-			}
-		}
 
-		if ((dev_config != NULL) && (dev_config->emu_type != PCI_DEV_TYPE_NONE)) {
 			dev_config->vbdf.value = pdev->bdf.value;
 			dev_config->pbdf.value = pdev->bdf.value;
 			dev_config->pdev = pdev;
