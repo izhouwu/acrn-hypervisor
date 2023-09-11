@@ -52,11 +52,18 @@ static bool is_allocated_to_prelaunched_vm(struct pci_pdev *pdev)
  */
 struct acrn_vm_pci_dev_config *init_one_dev_config(struct pci_pdev *pdev)
 {
+	uint16_t vmid;
+	struct acrn_vm_config *vm_config;
 	struct acrn_vm_pci_dev_config *dev_config = NULL;
 
-	if (service_vm_config != NULL) {
-		dev_config = &service_vm_config->pci_devs[service_vm_config->pci_dev_num];
-		if (!is_allocated_to_prelaunched_vm(pdev)) {
+	if (!is_allocated_to_prelaunched_vm(pdev)) {
+		for (vmid = 0U; vmid < CONFIG_MAX_VM_NUM; vmid++) {
+			vm_config = get_vm_config(vmid);
+			if (vm_config->load_order != SERVICE_VM) {
+				continue;
+			}
+
+			dev_config = &vm_config->pci_devs[vm_config->pci_dev_num];
 			if (is_hv_owned_pdev(pdev->bdf)) {
 				/* Service VM need to emulate the type1 pdevs owned by HV */
 				dev_config->emu_type = PCI_DEV_TYPE_SERVICE_VM_EMUL;
@@ -66,6 +73,7 @@ struct acrn_vm_pci_dev_config *init_one_dev_config(struct pci_pdev *pdev)
 					dev_config->vdev_ops = &vhostbridge_ops;
 				} else {
 					/* May have type0 device, E.g. debug pci uart */
+					break;
 				}
 			} else {
 				dev_config->emu_type = PCI_DEV_TYPE_PTDEV;
@@ -74,7 +82,7 @@ struct acrn_vm_pci_dev_config *init_one_dev_config(struct pci_pdev *pdev)
 			dev_config->vbdf.value = pdev->bdf.value;
 			dev_config->pbdf.value = pdev->bdf.value;
 			dev_config->pdev = pdev;
-			service_vm_config->pci_dev_num++;
+			vm_config->pci_dev_num++;
 		}
 	}
 	return dev_config;
