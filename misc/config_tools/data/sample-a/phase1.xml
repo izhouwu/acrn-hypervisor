@@ -53,7 +53,7 @@
     <os_config>
       <kern_type>KERNEL_ELF</kern_type>
       <kern_mod>kernelflinger</kern_mod>
-      <bootargs>serail_baseaddr=0x3f8 serail_type=1 serail_regwidth=1 console=ttyS0,115200 reset=unspecified bdev=NVME diskbus=0x10000 timestamps=53@0x45167000 boot=0x0</bootargs>
+      <bootargs>serail_baseaddr=0x3f8 serail_type=1 serail_regwidth=1 console=ttyS0,115200</bootargs>
     </os_config>
     <lapic_passthrough>n</lapic_passthrough>
     <nested_virtualization_support>n</nested_virtualization_support>
