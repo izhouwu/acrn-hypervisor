@@ -2417,6 +2417,7 @@ pci_xhci_cmd_reset_ep(struct pci_xhci_vdev *xdev,
 
 	devep = &dev->eps[epid];
 	pthread_mutex_lock(&devep->mtx);
+	pthread_mutex_unlock(&xdev->mtx);
 
 	xfer = devep->ep_xfer;
 	for (i = 0; i < xfer->max_blk_cnt; ++i) {
@@ -2439,6 +2440,7 @@ pci_xhci_cmd_reset_ep(struct pci_xhci_vdev *xdev,
 	UPRINTF(LDBG, "reset ep[%u] %08x %08x %016lx %08x\r\n",
 		epid, ep_ctx->dwEpCtx0, ep_ctx->dwEpCtx1, ep_ctx->qwEpCtx2,
 		ep_ctx->dwEpCtx4);
+	pthread_mutex_lock(&xdev->mtx);
 	pthread_mutex_unlock(&devep->mtx);
 
 done:
@@ -3048,8 +3050,10 @@ pci_xhci_try_usb_xfer(struct pci_xhci_vdev *xdev,
 
 	/* outstanding requests queued up */
 	if (dev->dev_ue->ue_data != NULL) {
+		pthread_mutex_unlock(&xdev->mtx);
 		err = dev->dev_ue->ue_data(dev->dev_instance, xfer, epid & 0x1 ?
 					   USB_XFER_IN : USB_XFER_OUT, epid/2);
+		pthread_mutex_lock(&xdev->mtx);
 		if (err == USB_ERR_CANCELLED) {
 			if (USB_DATA_GET_ERRCODE(&xfer->data[xfer->head]) ==
 			    USB_NAK)
