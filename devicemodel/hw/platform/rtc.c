@@ -839,13 +839,13 @@ vrtc_set_reg_a(struct vrtc *vrtc, uint8_t newval)
 }
 
 static void
-send_rtc_chg_event(time_t newtime)
+send_rtc_chg_event(time_t newtime, time_t lasttime)
 {
 	struct vm_event event;
 	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event.event_data;
 	event.type = VM_EVENT_RTC_CHG;
-	data->delta_time_in_secs = newtime - time(NULL);
-	data->relative_to = RTC_CHG_RELATIVE_SERVICE_VM_SYS_TIME;
+	data->delta_time = newtime - lasttime;
+	data->last_time = lasttime;
 	dm_send_vm_event(&event);
 }
 
@@ -983,6 +983,7 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 		 * so re-calculate the RTC date/time.
 		 */
 		if (vrtc_is_time_register(offset)) {
+			time_t last_time = curtime; 
 			if (!rtc_halted(vrtc)) {
 				curtime = rtc_to_secs(vrtc);
 				error = vrtc_time_update(vrtc, curtime, time(NULL));
@@ -993,7 +994,7 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 			 * So send an event each time the date/time regs has been updated.
 			 * The event handler will process those events.
 			 */
-			send_rtc_chg_event(rtc_to_secs(vrtc));
+			send_rtc_chg_event(rtc_to_secs(vrtc), last_time);
 		}
 	}
 

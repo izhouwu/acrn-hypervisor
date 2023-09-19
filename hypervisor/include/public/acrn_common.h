@@ -843,8 +843,8 @@ struct vm_event {
 };
 
 struct rtc_change_event_data {
-	int64_t	delta_time_in_secs; /* delta of time(in secs) the RTC has been changed */
-	uint8_t	relative_to; /* what the time change is relative to (RTC/systime)*/
+	int64_t	last_time; /* time(in secs) of the RTC defore been set */
+	int64_t delta_time; /* delta of time(in secs) the RTC has been changed */
 };
 
 /* DM vrtc's reference time is besed on sys time, while the HV vrtc is based on pRTC.
