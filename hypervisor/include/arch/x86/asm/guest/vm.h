@@ -131,6 +131,8 @@ struct vm_arch {
 	spinlock_t iwkey_backup_lock;	/* Spin-lock used to protect internal key backup/restore */
 	struct iwkey iwkey_backup;
 
+	/* reference to virtual platform to come here (as needed) */
+	bool vm_mwait_cap;
 } __aligned(PAGE_SIZE);
 
 struct acrn_vm {
