@@ -27,7 +27,7 @@
 #elif defined(CONFIG_SCHED_PRIO)
 #define SERVICE_VM_IDLE		""
 #else
-#define SERVICE_VM_IDLE		"idle=halt "
+#define SERVICE_VM_IDLE		""
 #endif
 
 #define PCI_DEV_TYPE_NONE		0U
