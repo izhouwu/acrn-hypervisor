@@ -113,6 +113,8 @@ struct virtio_sound_msg_node {
 	struct iovec *iov;
 	struct virtio_vq_info *vq;
 	int cnt;
+	int start_seg;
+	int start_pos;
 	uint16_t idx;
 };
 
@@ -354,6 +356,9 @@ virtio_sound_notify_xfer(struct virtio_sound *virt_snd, struct virtio_vq_info *v
 		}
 		msg_node->cnt = n;
 		msg_node->vq = vq;
+		/* Seg[0] is pcm xfer request header, pcm data start from seg[1].*/
+		msg_node->start_seg = 1;
+		msg_node->start_pos = 0;
 
 		xfer_hdr = (struct virtio_snd_pcm_xfer *)msg_node->iov[0].iov_base;
 		s = xfer_hdr->stream_id;
@@ -396,11 +401,13 @@ virtio_sound_set_hwparam(struct virtio_sound_pcm *stream)
 		WPRINTF("%s: no configurations available, error number %d!\n", __func__, err);
 		return -1;
 	}
+
 	err = snd_pcm_hw_params_set_access(stream->handle, hwparams, SND_PCM_ACCESS_MMAP_INTERLEAVED);
 	if(err < 0) {
 		WPRINTF("%s: set access, error number %d!\n", __func__, err);
 		return -1;
 	}
+
 	err = snd_pcm_hw_params_set_format(stream->handle, hwparams,
 		virtio_sound_v2s_format[stream->param.format]);
 	if(err < 0) {
@@ -422,8 +429,9 @@ virtio_sound_set_hwparam(struct virtio_sound_pcm *stream)
 			virtio_sound_t_rate[stream->param.rate], err);
 		return -1;
 	}
+
 	buffer_size = stream->param.buffer_bytes / virtio_sound_get_frame_size(stream);
-	err = snd_pcm_hw_params_set_buffer_size(stream->handle, hwparams, buffer_size);
+	err = snd_pcm_hw_params_set_buffer_size_near(stream->handle, hwparams, &buffer_size);
 	if(err < 0) {
 		WPRINTF("%s: set buffer_size(%ld) fail, error number %d!\n", __func__, buffer_size, err);
 		return -1;
@@ -436,11 +444,28 @@ virtio_sound_set_hwparam(struct virtio_sound_pcm *stream)
 		WPRINTF("%s: set period_size(%ld) fail, error number %d!\n", __func__, period_size, err);
 		return -1;
 	}
+
 	err = snd_pcm_hw_params(stream->handle, hwparams);
 	if (err < 0) {
 		WPRINTF("%s: set hw params fail, error number %d!\n", __func__, err);
 		return -1;
 	}
+
+	err = snd_pcm_hw_params_get_buffer_size(hwparams, &buffer_size);
+	if(err < 0) {
+		WPRINTF("%s: get buffer_size(%ld) fail, error number %d!\ne", __func__, buffer_size, err);
+		return -1;
+	}
+	stream->param.buffer_bytes = buffer_size * virtio_sound_get_frame_size(stream);
+
+	dir = stream->dir;
+	err = snd_pcm_hw_params_get_period_size(hwparams, &period_size, &dir);
+	if(err < 0) {
+		WPRINTF("%s: set period_size(%ld) fail, error number %d!\n", __func__, period_size, err);
+		return -1;
+	}
+	stream->param.period_bytes = period_size * virtio_sound_get_frame_size(stream);
+
 	return 0;
 }
 
@@ -530,16 +555,31 @@ virtio_sound_recover(struct virtio_sound_pcm *stream)
 	return err;
 }
 
+static void
+virtio_snd_release_data_node(struct virtio_sound_pcm *stream, struct virtio_sound_msg_node *msg_node, int len)
+{
+	struct virtio_snd_pcm_status *ret_status;
+
+	ret_status = (struct virtio_snd_pcm_status *)msg_node->iov[msg_node->cnt - 1].iov_base;
+	ret_status->status = VIRTIO_SND_S_OK;
+	vq_relchain(msg_node->vq, msg_node->idx, len + sizeof(struct virtio_snd_pcm_status));
+	vq_endchains(msg_node->vq, 0);
+	pthread_mutex_lock(&stream->mtx);
+	STAILQ_REMOVE_HEAD(&stream->head, link);
+	pthread_mutex_unlock(&stream->mtx);
+	free(msg_node->iov);
+	free(msg_node);
+}
+
 static int
 virtio_sound_xfer(struct virtio_sound_pcm *stream)
 {
 	const snd_pcm_channel_area_t *pcm_areas;
 	struct virtio_sound_msg_node *msg_node;
-	struct virtio_snd_pcm_status *ret_status;
 	snd_pcm_sframes_t avail, xfer = 0;
 	snd_pcm_uframes_t pcm_offset, frames;
-	void * buf;
-	int err, i, frame_size, to_copy, len = 0;
+	void *buf;
+	int err, i, frame_size, to_copy, len = 0, left, commit;
 
 	avail = snd_pcm_avail_update(stream->handle);
 	if (avail < 0) {
@@ -552,10 +592,9 @@ virtio_sound_xfer(struct virtio_sound_pcm *stream)
 	frame_size = virtio_sound_get_frame_size(stream);
 	frames = stream->param.period_bytes / frame_size;
 	/*
-	 * For frontend send buffer address period by period, backend copy a period
-	 * data in one time.
-	 */
-	if (avail < frames || (msg_node = STAILQ_FIRST(&stream->head)) == NULL) {
+	* Backend copy a period data in one time as hw parameter in SOS.
+	*/
+	if (avail < frames || STAILQ_EMPTY(&stream->head)) {
 		return 0;
 	}
 	err = snd_pcm_mmap_begin(stream->handle, &pcm_areas, &pcm_offset, &frames);
@@ -567,42 +606,53 @@ virtio_sound_xfer(struct virtio_sound_pcm *stream)
 		}
 	}
 	/*
-	 * 'pcm_areas' is an array which contains num_of_channels elements in it.
-	 * For interleaved, all elements in the array has the same addr but different offset ("first" in the structure).
-	 */
+	* 'pcm_areas' is an array which contains num_of_channels elements in it.
+	* For interleaved, all elements in the array has the same addr but different offset ("first" in the structure).
+	*/
 	buf = pcm_areas[0].addr + pcm_offset * frame_size;
-	for (i = 1; i < msg_node->cnt - 1; i++) {
-		to_copy = msg_node->iov[i].iov_len;
-		/*
-		 * memcpy can only be used when SNDRV_PCM_INFO_INTERLEAVED.
-		 */
-		if (stream->dir == SND_PCM_STREAM_PLAYBACK) {
-			memcpy(buf, msg_node->iov[i].iov_base, to_copy);
-		} else {
-			memcpy(msg_node->iov[i].iov_base, buf, to_copy);
-			len += msg_node->iov[i].iov_len;
+	do{
+		if ((msg_node = STAILQ_FIRST(&stream->head)) == NULL)
+			break;
+		for (i = msg_node->start_seg; i < msg_node->cnt - 1; i++) {
+			left = (msg_node->iov[i].iov_len- msg_node->start_pos) / frame_size;
+			to_copy = MIN(left, (frames - xfer));
+			/*
+			* memcpy can only be used when SNDRV_PCM_INFO_INTERLEAVED.
+			*/
+			if (stream->dir == SND_PCM_STREAM_PLAYBACK) {
+				memcpy(buf, msg_node->iov[i].iov_base, to_copy * frame_size);
+			} else {
+				memcpy(msg_node->iov[i].iov_base, buf, to_copy * frame_size);
+			}
+
+			xfer += to_copy;
+			buf += to_copy * frame_size;
+			msg_node->start_pos += to_copy * frame_size;
+			if (msg_node->start_pos >= msg_node->iov[i].iov_len) {
+					msg_node->start_seg++;
+					msg_node->start_pos = 0;
+			} else {
+					break;
+			}
 		}
-		xfer += to_copy / frame_size;
-		buf += to_copy;
-	}
-	if (xfer != frames) {
-		WPRINTF("%s: write fail, xfer %ld, frame %ld!\n", __func__, xfer, frames);
-		return -1;
-	}
-	xfer = snd_pcm_mmap_commit(stream->handle, pcm_offset, frames);
-	if(xfer < 0 || xfer != frames) {
+		if (msg_node->start_seg >= msg_node->cnt - 1) {
+			/* Capture need return the read legth to FE.
+			 * For playback all data has writen, len is not needed.
+			 */
+			if (stream->dir == SND_PCM_STREAM_CAPTURE) {
+					for (i = 1; i < msg_node->cnt - 1; i++)
+							len += msg_node->iov[i].iov_len;
+			}
+			virtio_snd_release_data_node(stream, msg_node, len);
+		}
+	} while(xfer < frames);
+
+	commit = snd_pcm_mmap_commit(stream->handle, pcm_offset, xfer);
+	if(xfer < 0 || xfer != commit) {
 		WPRINTF("%s: mmap commit fail, xfer %ld!\n", __func__, xfer);
 		return -1;
 	}
-	ret_status = (struct virtio_snd_pcm_status *)msg_node->iov[msg_node->cnt - 1].iov_base;
-	ret_status->status = VIRTIO_SND_S_OK;
-	vq_relchain(msg_node->vq, msg_node->idx, len + sizeof(struct virtio_snd_pcm_status));
-	vq_endchains(msg_node->vq, 0);
-	pthread_mutex_lock(&stream->mtx);
-	STAILQ_REMOVE_HEAD(&stream->head, link);
-	pthread_mutex_unlock(&stream->mtx);
-	free(msg_node->iov);
-	free(msg_node);
+
 	return xfer;
 }
 
@@ -646,7 +696,7 @@ virtio_sound_pcm_thread(void *param)
 				WPRINTF("%s: stream error!\n", __func__);
 				break;
 			}
-		} else {
+		} else if (revents) {
 			err = virtio_sound_recover(stream);
 			if (err < 0) {
 				WPRINTF("%s: poll error %d!\n", __func__, (int)snd_pcm_state(stream->handle));
@@ -945,6 +995,7 @@ virtio_sound_r_pcm_prepare(struct virtio_sound *virt_snd, struct iovec *iov, uin
 			ret->code = VIRTIO_SND_S_BAD_MSG;
 			return (int)iov[1].iov_len;
 		}
+
 	if (snd_pcm_prepare(virt_snd->streams[s]->handle) < 0) {
 		WPRINTF("%s: stream %s prepare fail!\n", __func__, virt_snd->streams[s]->dev_name);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
@@ -1024,6 +1075,7 @@ virtio_sound_r_pcm_start(struct virtio_sound *virt_snd, struct iovec *iov, uint8
 		WPRINTF("%s: create thread fail!\n", __func__);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 	}
+
 	if (snd_pcm_start(stream->handle) < 0) {
 		WPRINTF("%s: stream %s start error!\n", __func__, stream->dev_name);
 		ret->code = VIRTIO_SND_S_BAD_MSG;
@@ -1050,7 +1102,7 @@ virtio_sound_r_pcm_stop(struct virtio_sound *virt_snd, struct iovec *iov, uint8_
 		ret->code = VIRTIO_SND_S_BAD_MSG;
 		return (int)iov[1].iov_len;
 	}
-	if (snd_pcm_drop(virt_snd->streams[s]->handle) < 0) {
+	if (virt_snd->streams[s]->handle != NULL && snd_pcm_drop(virt_snd->streams[s]->handle) < 0) {
 		WPRINTF("%s: stream %s drop error!\n", __func__, virt_snd->streams[s]->dev_name);
 	}
 	virt_snd->streams[s]->status = VIRTIO_SND_BE_STOP;
