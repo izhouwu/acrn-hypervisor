@@ -122,3 +122,32 @@ int user_vm_blkrescan_handler(void *arg, void *command_para)
 	}
 	return ret;
 }
+
+extern int
+virtio_sound_inject_jack_event(char *param);
+int user_vm_jack_event_handler(void *arg, void *command_para)
+{
+	int ret = 0;
+	struct command_parameters *cmd_para = (struct command_parameters *)command_para;
+	struct handler_args *hdl_arg = (struct handler_args *)arg;
+	struct socket_dev *sock = (struct socket_dev *)hdl_arg->channel_arg;
+	struct socket_client *client = NULL;
+	bool cmd_completed = false;
+
+	client = find_socket_client(sock, cmd_para->fd);
+	if (client == NULL)
+		return -1;
+
+	ret = virtio_sound_inject_jack_event(cmd_para->option);
+	if (ret >= 0) {
+		cmd_completed = true;
+	} else {
+		pr_err("Failed to set connection %s.\n", cmd_para->option);
+	}
+
+	ret = send_socket_ack(sock, cmd_para->fd, cmd_completed);
+	if (ret < 0) {
+		pr_err("Failed to send ACK by socket.\n");
+	}
+	return ret;
+}

@@ -99,6 +99,7 @@ static void register_socket_message_handlers(struct vmctx *ctx)
 	arg.ctx_arg = ctx;
 	register_command_handler(user_vm_destroy_handler, &arg, DESTROY);
 	register_command_handler(user_vm_blkrescan_handler, &arg, BLKRESCAN);
+	register_command_handler(user_vm_jack_event_handler, &arg, JACKCONNECT);
 }
 
 int init_cmd_monitor(struct vmctx *ctx)
