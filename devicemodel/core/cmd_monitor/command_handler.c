@@ -96,7 +96,7 @@ int vm_monitor_send_vm_event(const char *msg)
 	if (msg == NULL || client == NULL) {
 		return -1;
 	}
-
+	pr_notice("%s\n", msg);
 	pthread_mutex_lock(client->per_client_mutex);
 	memset(client->buf, 0, CLIENT_BUF_LEN);
 	memcpy(client->buf, msg, strlen(msg));

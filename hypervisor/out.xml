@@ -1,0 +1,182 @@
+<acrn-config scenario="MyConfiguration-rpl-n">
+  <hv>
+    <BUILD_TYPE>debug</BUILD_TYPE>
+    <FEATURES>
+      <RDT>
+        <RDT_ENABLED>n</RDT_ENABLED>
+        <CDP_ENABLED>n</CDP_ENABLED>
+        <VCAT_ENABLED>n</VCAT_ENABLED>
+      </RDT>
+      <RELOC_ENABLED>y</RELOC_ENABLED>
+      <SCHEDULER>SCHED_BVT</SCHEDULER>
+      <MULTIBOOT2_ENABLED>y</MULTIBOOT2_ENABLED>
+      <SPLIT_LOCK_DETECTION_ENABLED>n</SPLIT_LOCK_DETECTION_ENABLED>
+      <UC_LOCK_DETECTION_ENABLED>n</UC_LOCK_DETECTION_ENABLED>
+      <SECURITY_VM_FIXUP>n</SECURITY_VM_FIXUP>
+      <KEEP_IRQ_DISABLED>n</KEEP_IRQ_DISABLED>
+      <HYPERV_ENABLED>y</HYPERV_ENABLED>
+      <IOMMU_ENFORCE_SNP>n</IOMMU_ENFORCE_SNP>
+      <ACPI_PARSE_ENABLED>y</ACPI_PARSE_ENABLED>
+      <L1D_VMENTRY_ENABLED>n</L1D_VMENTRY_ENABLED>
+      <MCE_ON_PSC_ENABLED>n</MCE_ON_PSC_ENABLED>
+      <CPU_PERFORMANCE_POLICY>Performance</CPU_PERFORMANCE_POLICY>
+    <IVSHMEM /></FEATURES>
+    <DEBUG_OPTIONS>
+      <SERIAL_CONSOLE>/dev/ttyS0</SERIAL_CONSOLE>
+      <MEM_LOGLEVEL>3</MEM_LOGLEVEL>
+      <NPK_LOGLEVEL>3</NPK_LOGLEVEL>
+      <CONSOLE_LOGLEVEL>3</CONSOLE_LOGLEVEL>
+    </DEBUG_OPTIONS>
+    <MEMORY>
+      <STACK_SIZE>0x2000</STACK_SIZE>
+    </MEMORY>
+    <CAPACITIES>
+      <MAX_VM_NUM>16</MAX_VM_NUM>
+      <MAX_IOAPIC_NUM>1</MAX_IOAPIC_NUM>
+      <MAX_PCI_BUS_NUM>0</MAX_PCI_BUS_NUM>
+      <MAX_PCI_DEV_NUM>96</MAX_PCI_DEV_NUM>
+      <MAX_IOAPIC_LINES>120</MAX_IOAPIC_LINES>
+      <MAX_PT_IRQ_ENTRIES>256</MAX_PT_IRQ_ENTRIES>
+      <MAX_MSIX_TABLE_NUM>64</MAX_MSIX_TABLE_NUM>
+      <MAX_EMULATED_MMIO>16</MAX_EMULATED_MMIO>
+    </CAPACITIES>
+    <MISC_CFG>
+      <GPU_SBDF>0x00000010</GPU_SBDF>
+    </MISC_CFG>
+  <vuart_connections /></hv>
+  <vm id="0">
+    <vm_type>STANDARD_VM</vm_type>
+    <console_vuart>COM Port 1</console_vuart>
+    <os_config>
+      <kern_type>KERNEL_BZIMAGE</kern_type>
+      <kern_mod>Linux_bzImage</kern_mod>
+      <bootargs>rw rootwait root=/dev/nvme0n1p2 console=tty0 console=ttyS0 consoleblank=0 no_timer_check quiet loglevel=3 i915.nuclear_pageflip=1 swiotlb=131072</bootargs>
+    </os_config>
+    <load_order>SERVICE_VM</load_order>
+    <name>VM0</name>
+    <own_pcpu>n</own_pcpu>
+    <priority>PRIO_LOW</priority>
+    <companion_vmid>65535</companion_vmid>
+  </vm>
+  <vm id="1">
+    <vm_type>STANDARD_VM</vm_type>
+    <console_vuart>COM Port 1</console_vuart>
+    <os_type>Non-Windows OS</os_type>
+    <vuart0>y</vuart0>
+    <vbootloader>y</vbootloader>
+    <memory>
+      <size>4096</size>
+    </memory>
+    <cpu_affinity>
+
+      <pcpu>
+        <pcpu_id>6</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>7</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>8</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>9</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>10</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>11</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+</pcpu>
+<pcpu>
+        <pcpu_id>12</pcpu_id>
+       <real_time_vcpu>n</real_time_vcpu>
+</pcpu>
+<pcpu>
+        <pcpu_id>13</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+     </pcpu>
+   <pcpu>
+        <pcpu_id>14</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>15</pcpu_id>
+          <real_time_vcpu>n</real_time_vcpu>
+        </pcpu>		  
+
+    </cpu_affinity>
+    <virtio_devices>
+      <gpu>
+        <display_type>Full screen</display_type>
+        <displays>
+          <display>
+            <monitor_id>0</monitor_id>
+            <window_resolutions>1440x900</window_resolutions>
+          </display>
+        </displays>
+      </gpu>
+      <network>
+        <virtio_framework>User space based (VBSU)</virtio_framework>
+        <interface_name>uaag</interface_name>
+      </network>
+      <block>./uvm1.img</block>
+    </virtio_devices>
+    <lapic_passthrough>n</lapic_passthrough>
+    <io_completion_polling>n</io_completion_polling>
+    <virtual_cat_support>n</virtual_cat_support>
+    <virtual_cat_number>0</virtual_cat_number>
+    <secure_world_support>n</secure_world_support>
+    <load_order>POST_LAUNCHED_VM</load_order>
+    <name>VM1</name>
+    <own_pcpu>n</own_pcpu>
+    <priority>PRIO_LOW</priority>
+    <companion_vmid>65535</companion_vmid>
+  </vm> 
+  <vm id="2">
+    <vm_type>STANDARD_VM</vm_type>
+    <console_vuart>None</console_vuart>
+    <os_type>Windows OS</os_type>
+    <vuart0>n</vuart0>
+    <vbootloader>y</vbootloader>
+    <memory>
+      <size>4096</size>
+    </memory>
+    <cpu_affinity>
+      <pcpu>
+        <pcpu_id>2</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>3</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>4</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+      <pcpu>
+        <pcpu_id>5</pcpu_id>
+        <real_time_vcpu>n</real_time_vcpu>
+      </pcpu>
+    </cpu_affinity>
+    <virtio_devices>
+      <network>
+        <virtio_framework>User space based (VBSU)</virtio_framework>
+        <interface_name>waag</interface_name>
+      </network>
+      <block>./waag.img</block>
+    </virtio_devices>
+    <load_order>POST_LAUNCHED_VM</load_order>
+    <name>VM2</name>
+    <own_pcpu>n</own_pcpu>
+    <secure_world_support>n</secure_world_support>
+    <priority>PRIO_LOW</priority>
+    <companion_vmid>65535</companion_vmid>
+  </vm>
+</acrn-config>

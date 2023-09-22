@@ -81,6 +81,7 @@ struct vrtc {
 	u_int		addr;               /* RTC register to read or write */
 	time_t		base_uptime;
 	time_t		base_rtctime;
+	time_t		halted_rtctime;
 	struct rtcdev	rtcdev;
 };
 
@@ -221,6 +222,17 @@ update_enabled(struct vrtc *vrtc)
 	return true;
 }
 
+/* monotonic time is number of seconds that the system has been running
+ * since it was booted. It is none setable. It is more suitable to be used
+ * as base time.
+ */
+static time_t monotonic_time(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec;
+}
+
 static time_t
 vrtc_curtime(struct vrtc *vrtc, time_t *basetime)
 {
@@ -230,7 +242,7 @@ vrtc_curtime(struct vrtc *vrtc, time_t *basetime)
 	t = vrtc->base_rtctime;
 	*basetime = vrtc->base_uptime;
 	if (update_enabled(vrtc)) {
-		now = time(NULL);
+		now = monotonic_time();
 		delta = now - vrtc->base_uptime;
 		secs = delta;
 		t += secs;
@@ -715,6 +727,21 @@ vrtc_set_reg_c(struct vrtc *vrtc, uint8_t newval)
 	}
 }
 
+static void
+send_rtc_chg_event(time_t newtime, time_t lasttime)
+{
+	struct vm_event event;
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event.event_data;
+	pr_notice("  %s \n", asctime(localtime(&lasttime)));
+	pr_notice("  ->%s \n", asctime(localtime(&newtime)) );
+	pr_notice("rtc chg %ld -> %ld\n", lasttime, newtime);
+
+	event.type = VM_EVENT_RTC_CHG;
+	data->delta_time = newtime - lasttime;
+	data->last_time = lasttime;
+	dm_send_vm_event(&event);
+}
+
 static int
 vrtc_set_reg_b(struct vrtc *vrtc, uint8_t newval)
 {
@@ -737,16 +764,25 @@ vrtc_set_reg_b(struct vrtc *vrtc, uint8_t newval)
 	if (changed & RTCSB_HALT) {
 		if ((newval & RTCSB_HALT) == 0) {
 			rtctime = rtc_to_secs(vrtc);
-			basetime = time(NULL);
+			basetime = monotonic_time();
 			if (rtctime == VRTC_BROKEN_TIME) {
 				if (rtc_flag_broken_time)
 					return -1;
+			} else {
+				/* send rtc change event if rtc time changed during halt */
+				if (vrtc->halted_rtctime != VRTC_BROKEN_TIME &&
+					rtctime != vrtc->halted_rtctime) {
+					send_rtc_chg_event(rtctime, vrtc->halted_rtctime);
+					vrtc->halted_rtctime = VRTC_BROKEN_TIME;
+				}
 			}
 		} else {
+			
 			curtime = vrtc_curtime(vrtc, &basetime);
 			if (curtime != vrtc->base_rtctime)
 				return -1;
-
+			vrtc->halted_rtctime = curtime;
+			pr_notice("halted at %s \n", asctime(localtime(&curtime)));
 			/*
 			 * Force a refresh of the RTC date/time fields so
 			 * they reflect the time right before the guest set
@@ -811,7 +847,7 @@ vrtc_set_reg_a(struct vrtc *vrtc, uint8_t newval)
 		 * maintain the illusion that the RTC date/time was frozen
 		 * while the dividers were disabled.
 		 */
-		vrtc->base_uptime = time(NULL);
+		vrtc->base_uptime = monotonic_time();
 		RTC_DEBUG("RTC divider out of reset at %#lx/%#lx\n",
 				vrtc->base_rtctime, vrtc->base_uptime);
 	} else {
@@ -836,17 +872,6 @@ vrtc_set_reg_a(struct vrtc *vrtc, uint8_t newval)
 	} else {
 		/*Nothing to do*/
 	}
-}
-
-static void
-send_rtc_chg_event(time_t newtime)
-{
-	struct vm_event event;
-	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event.event_data;
-	event.type = VM_EVENT_RTC_CHG;
-	data->delta_time_in_secs = newtime - time(NULL);
-	data->relative_to = RTC_CHG_RELATIVE_SERVICE_VM_SYS_TIME;
-	dm_send_vm_event(&event);
 }
 
 int
@@ -924,6 +949,8 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 
 	error = 0;
 	curtime = vrtc_curtime(vrtc, &basetime);
+	pr_notice("cur %ld\n", curtime);
+
 	vrtc_time_update(vrtc, curtime, basetime);
 
 	/*
@@ -972,7 +999,7 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 			*eax &= 0x7f;
 			/* FALLTHRU */
 		default:
-			RTC_DEBUG("RTC offset %#x set to %#x\n", offset, *eax);
+			pr_notice("RTC offset %#x set to %#x\n", offset, *eax);
 			*((uint8_t *)rtc + offset) = *eax;
 			break;
 		}
@@ -982,18 +1009,19 @@ vrtc_data_handler(struct vmctx *ctx, int vcpu, int in, int port,
 		 * and some guests (e.g. WaaG) write all date/time outside of RTCSB_HALT,
 		 * so re-calculate the RTC date/time.
 		 */
-		if (vrtc_is_time_register(offset)) {
-			if (!rtc_halted(vrtc)) {
-				curtime = rtc_to_secs(vrtc);
-				error = vrtc_time_update(vrtc, curtime, time(NULL));
-				if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
-					error = -1;
+		if (vrtc_is_time_register(offset) && !rtc_halted(vrtc)) {
+			time_t last_time = curtime; 
+			curtime = rtc_to_secs(vrtc);
+			error = vrtc_time_update(vrtc, curtime, monotonic_time());
+			if ((error != 0) || (curtime == VRTC_BROKEN_TIME && rtc_flag_broken_time))
+				error = -1;
+			else {
+				/* We don't know when the Guest has finished the RTC change action.
+				* So send an event each time the date/time regs has been updated.
+				* The event handler will process those events.
+				*/
+				send_rtc_chg_event(rtc_to_secs(vrtc), last_time);
 			}
-			/* We don't know when the Guest has finished the RTC change action.
-			 * So send an event each time the date/time regs has been updated.
-			 * The event handler will process those events.
-			 */
-			send_rtc_chg_event(rtc_to_secs(vrtc));
 		}
 	}
 
@@ -1008,7 +1036,7 @@ vrtc_set_time(struct vrtc *vrtc, time_t secs)
 	int error;
 
 	pthread_mutex_lock(&vrtc->mtx);
-	error = vrtc_time_update(vrtc, secs, time(NULL));
+	error = vrtc_time_update(vrtc, secs, monotonic_time());
 	pthread_mutex_unlock(&vrtc->mtx);
 
 	if (error)
@@ -1113,6 +1141,7 @@ vrtc_init(struct vmctx *ctx)
 	/* Reset the index register to a safe value. */
 	vrtc->addr = RTC_STATUSD;
 
+	vrtc->halted_rtctime = VRTC_BROKEN_TIME;
 	/*
 	 * Initialize RTC time to 00:00:00 Jan 1, 1970 if curtime = 0
 	 */
@@ -1121,7 +1150,7 @@ vrtc_init(struct vmctx *ctx)
 
 	pthread_mutex_lock(&vrtc->mtx);
 	vrtc->base_rtctime = VRTC_BROKEN_TIME;
-	vrtc_time_update(vrtc, curtime, time(NULL));
+	vrtc_time_update(vrtc, curtime, monotonic_time());
 	secs_to_rtc(curtime, vrtc, 0);
 	pthread_mutex_unlock(&vrtc->mtx);
 

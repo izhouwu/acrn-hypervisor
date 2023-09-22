@@ -599,11 +599,9 @@ static bool vrtc_write(struct acrn_vcpu *vcpu, uint16_t addr, size_t width,
 				vrtc->last_rtctime = VRTC_BROKEN_TIME;
 				spinlock_release(&vrtc_rebase_lock);
 				if (is_postlaunched_vm(vcpu->vm) && vrtc_is_time_register(vrtc->addr)) {
-					struct acrn_vrtc temp_vrtc;
-					time_t physical_time = vrtc_get_physical_rtc_time(&temp_vrtc);
 					rtc_chg_event.type = VM_EVENT_RTC_CHG;
-					edata->delta_time_in_secs = after - physical_time;
-					edata->relative_to = RTC_CHG_RELATIVE_PHYSICAL_RTC;
+					edata->delta_time = after - current;
+					edata->last_time = current;
 					send_vm_event(vcpu->vm, &rtc_chg_event);
 				}
 				break;

@@ -33,6 +33,8 @@
 
 #define THROTTLE_WINDOW	1U /* time window for throttle counter, in secs*/
 
+#define BROKEN_TIME ((time_t)-1)
+
 typedef void (*vm_event_handler)(struct vmctx *ctx, struct vm_event *event);
 typedef void (*vm_event_generate_jdata)(cJSON *event_obj, struct vm_event *event);
 
@@ -232,16 +234,14 @@ static void gen_rtc_chg_jdata(cJSON *event_obj, struct vm_event *event)
 {
 	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event->event_data;
 	cJSON *val;
-	char *relative;
 
-	val = cJSON_CreateNumber(data->delta_time_in_secs);
+	val = cJSON_CreateNumber(data->delta_time);
 	if (val != NULL) {
 		cJSON_AddItemToObject(event_obj, "delta_time", val);
 	}
-	relative = data->relative_to == RTC_CHG_RELATIVE_PHYSICAL_RTC ? "physical rtc" : "sys time";
-	val = cJSON_CreateString(relative);
+	val = cJSON_CreateNumber(data->last_time);
 	if (val != NULL) {
-		cJSON_AddItemToObject(event_obj, "relative_to", val);
+		cJSON_AddItemToObject(event_obj, "last_time", val);
 	}
 }
 
@@ -252,11 +252,13 @@ static struct acrn_timer rtc_chg_event_timer = {
 };
 static pthread_mutex_t rtc_chg_mutex = PTHREAD_MUTEX_INITIALIZER;
 static struct timespec time_window_start;
-static struct vm_event rtc_chg_event_cached;
+static time_t last_time_cached = BROKEN_TIME;
+static time_t delta_time_sum = 0;
 #define RTC_CHG_WAIT_TIME 1 /* 1 second */
 static void rtc_chg_event_handler(struct vmctx *ctx, struct vm_event *event)
 {
 	struct itimerspec timer_spec;
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)event->event_data;
 
 	/*
 	 * RTC time is not reliable until guest finishes updating all RTC date/time regs.
@@ -268,7 +270,10 @@ static void rtc_chg_event_handler(struct vmctx *ctx, struct vm_event *event)
 	timer_spec.it_interval.tv_sec = 0;
 	timer_spec.it_interval.tv_nsec = 0;
 	pthread_mutex_lock(&rtc_chg_mutex);
-	rtc_chg_event_cached = *event;
+	if (last_time_cached == BROKEN_TIME) {
+		last_time_cached = data->last_time;
+	}
+	delta_time_sum += data->delta_time;
 	/* The last timer will be overwriten if it is not triggered yet. */
 	acrn_timer_settime(&rtc_chg_event_timer, &timer_spec);
 	clock_gettime(CLOCK_MONOTONIC, &time_window_start);
@@ -280,6 +285,8 @@ static void rtc_chg_timer_cb(void *arg, uint64_t nexp)
 	struct timespec now, delta;
 	struct timespec time_window_size = {RTC_CHG_WAIT_TIME, 0};
 	struct vmctx *ctx = arg;
+	struct vm_event send_event;
+	struct rtc_change_event_data *data = (struct rtc_change_event_data *)send_event.event_data;
 
 	pthread_mutex_lock(&rtc_chg_mutex);
 	clock_gettime(CLOCK_MONOTONIC, &now);
@@ -287,7 +294,11 @@ static void rtc_chg_timer_cb(void *arg, uint64_t nexp)
 	timespecsub(&delta, &time_window_start);
 	/* possible racing problem here. make sure this is the right timer cb for the vm_event */
 	if (timespeccmp(&delta, &time_window_size, >=)) {
-		emit_vm_event(ctx, &rtc_chg_event_cached);
+		data->delta_time = delta_time_sum;
+		data->last_time = last_time_cached;
+		emit_vm_event(ctx, &send_event);
+		last_time_cached = BROKEN_TIME;
+		delta_time_sum = 0;
 	}
 	pthread_mutex_unlock(&rtc_chg_mutex);
 }
