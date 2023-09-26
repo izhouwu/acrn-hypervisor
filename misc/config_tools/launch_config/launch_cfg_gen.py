@@ -247,6 +247,12 @@ def get_slot_by_vbdf(vbdf):
     else:
         return None
 
+def get_function_by_vbdf(vbdf):
+    if vbdf is not None:
+        return vbdf.split(".")[1]
+    else:
+        return None
+
 def generate_for_one_vm(board_etree, hv_scenario_etree, vm_scenario_etree, vm_id):
     vm_name = eval_xpath(vm_scenario_etree, "./name/text()", f"ACRN Post-Launched VM")
     script = LaunchScript(board_etree, vm_name, vm_scenario_etree)
@@ -303,12 +309,14 @@ def generate_for_one_vm(board_etree, hv_scenario_etree, vm_scenario_etree, vm_id
     for ivshmem in eval_xpath_all(vm_scenario_etree, f"//IVSHMEM_REGION[PROVIDED_BY = 'Device Model' and .//VM_NAME = '{vm_name}']"):
         vbdf = eval_xpath(ivshmem, f".//VBDF/text()")
         slot = get_slot_by_vbdf(vbdf)
-        script.add_virtual_device("ivshmem", slot, options=f"dm:/{ivshmem.find('NAME').text},{ivshmem.find('IVSHMEM_SIZE').text}")
+        func = get_function_by_vbdf(vbdf)
+        script.add_virtual_device(f"ivshmem", str(slot) + ":" + str(func), options=f"{vbdf} dm:/{ivshmem.find('NAME').text},{ivshmem.find('IVSHMEM_SIZE').text}")
 
     for ivshmem in eval_xpath_all(vm_scenario_etree, f"//IVSHMEM_REGION[PROVIDED_BY = 'Hypervisor' and .//VM_NAME = '{vm_name}']"):
         vbdf = eval_xpath(ivshmem, f".//VBDF/text()")
         slot = get_slot_by_vbdf(vbdf)
-        script.add_virtual_device("ivshmem", slot, options=f"hv:/{ivshmem.find('NAME').text},{ivshmem.find('IVSHMEM_SIZE').text}")
+        func = get_function_by_vbdf(vbdf)
+        script.add_virtual_device(f"ivshmem", str(slot) + ":" + str(func), options=f"hv:/{ivshmem.find('NAME').text},{ivshmem.find('IVSHMEM_SIZE').text}")
 
     if eval_xpath(vm_scenario_etree, ".//console_vuart/text()") == "PCI":
         script.add_virtual_device("uart", options="vuart_idx:0")
@@ -317,7 +325,8 @@ def generate_for_one_vm(board_etree, hv_scenario_etree, vm_scenario_etree, vm_id
         if eval_xpath(conn, f"./type/text()") == "pci":
             vbdf = eval_xpath(conn, f"./endpoint[vm_name/text() = '{vm_name}']/vbdf/text()")
             slot = get_slot_by_vbdf(vbdf)
-            script.add_virtual_device("uart", slot, options=f"vuart_idx:{idx}")
+            func = get_function_by_vbdf(vbdf)
+            script.add_virtual_device("uart", str(slot) + ":" + str(func), options=f"vuart_idx:{idx}")
 
     xhci_params = []
     # Mediated PCI devices, including virtio
