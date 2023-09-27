@@ -423,7 +423,7 @@ void destory_event_tunnel(struct vm_event_tunnel *tunnel)
 	}
 }
 
-int vm_init_vm_event(struct vmctx *ctx)
+int vm_event_init(struct vmctx *ctx)
 {
 	int error;
 

@@ -1146,7 +1146,7 @@ main(int argc, char *argv[])
 		}
 
 		pr_notice("vm setup vm event\n");
-		error = vm_init_vm_event(ctx);
+		error = vm_event_init(ctx);
 		if (error) {
 			pr_warn("VM_EVENT is not supported by kernel or hyperviosr!\n");
 		}
