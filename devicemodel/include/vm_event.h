@@ -11,7 +11,7 @@
 #include <acrn_common.h>
 #include "vmmapi.h"
 
-int vm_init_vm_event(struct vmctx *ctx);
+int vm_event_init(struct vmctx *ctx);
 int vm_event_deinit(void);
 int dm_send_vm_event(struct vm_event *event);
 uint32_t get_dm_vm_event_overrun_count(void);
