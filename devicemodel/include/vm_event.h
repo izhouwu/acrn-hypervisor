@@ -8,7 +8,6 @@
 #define VM_EVENT_H
 
 #include <types.h>
-#include <acrn_common.h>
 #include "vmmapi.h"
 
 int vm_event_init(struct vmctx *ctx);
