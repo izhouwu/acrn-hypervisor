@@ -500,7 +500,7 @@ int dm_send_vm_event(struct vm_event *event)
 
 	if (sbuf != NULL) {
 		pthread_mutex_lock(&tunnel->mtx);
-		size_sent = sbuf_put(sbuf, (uint8_t *)event);
+		size_sent = sbuf_put(sbuf, (uint8_t *)event, sizeof(*event));
 		pthread_mutex_unlock(&tunnel->mtx);
 		if (size_sent == VM_EVENT_ELE_SIZE) {
 			eventfd_write(tunnel->kick_fd, 1UL);
