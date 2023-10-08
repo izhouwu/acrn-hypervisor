@@ -324,13 +324,12 @@ static void *vm_event_thread(void *param)
 		for (i = 0; i < n; i++) {
 			if (i < MAX_EPOLL_EVENTS) {
 				tunnel = eventlist[i].data.ptr;
+				eventfd_read(tunnel->kick_fd, &val);
 				if (tunnel && tunnel->enabled) {
 					while (!sbuf_is_empty(tunnel->sbuf)) {
 						struct vm_event_proc *proc;
 						sbuf_get(tunnel->sbuf, (uint8_t*)&ve);
-						eventfd_read(tunnel->kick_fd, &val);
 						pr_dbg("%ld vm event from%d %d\n", val, tunnel->type, ve.type);
-
 						proc = get_vm_event_proc(&ve);
 						if (proc && proc->ve_handler) {
 							(proc->ve_handler)(ctx, &ve);
