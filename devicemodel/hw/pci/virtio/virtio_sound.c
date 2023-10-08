@@ -159,6 +159,7 @@ struct vbs_jack_elem {
 	uint32_t hda_reg_defconf;
 	uint32_t connected;
 	struct vbs_card *card;
+	char *identifier;
 };
 
 struct vbs_card {
@@ -333,6 +334,32 @@ virtio_sound_reset(void *vdev)
 static struct virtio_sound *virtio_sound_get_device()
 {
 	return vsound;
+}
+
+static int
+virtio_sound_get_card_name(char *card_str, char *card_name)
+{
+	int idx;
+
+	if (strspn(card_str, "0123456789") == strlen(card_str)) {
+		idx = snd_card_get_index(card_str);
+		if (idx >= 0 && idx < 32)
+#if defined(SND_LIB_VER)
+#if SND_LIB_VER(1, 2, 5) <= SND_LIB_VERSION
+			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "sysdefault:%i", idx);
+#else
+			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
+#endif
+#else
+			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
+#endif
+		else {
+			return -1;
+		}
+	} else {
+		strncpy(card_name, card_str, VIRTIO_SOUND_CARD_NAME);
+	}
+	return 0;
 }
 
 static void
@@ -1884,6 +1911,46 @@ virtio_sound_get_card(struct virtio_sound *virt_snd, char *card)
 }
 
 static int
+virtio_sound_init_emu_ctl(struct virtio_sound *virt_snd, char *card_str, char *identifier)
+{
+	char *c, *cpy, *ident;
+
+	if (strcmp(card_str, "emu") != 0) {
+		return -1;
+	}
+	c = cpy = strdup(identifier);
+	ident = strsep(&c, ":");
+	if (strstr(ident, "Jack") != NULL) {
+		virt_snd->jacks[virt_snd->jack_cnt] = malloc(sizeof(struct vbs_jack_elem));
+		if (virt_snd->jacks[virt_snd->jack_cnt] == NULL) {
+			WPRINTF("%s: malloc jack elem fail!\n", __func__);
+			free(cpy);
+			return -1;
+		}
+		virt_snd->jacks[virt_snd->jack_cnt]->identifier = malloc(VIRTIO_SOUND_IDENTIFIER);
+		if (virt_snd->jacks[virt_snd->jack_cnt] == NULL) {
+			WPRINTF("%s: malloc jack identifier fail!\n", __func__);
+			free(virt_snd->jacks[virt_snd->jack_cnt]);
+			free(cpy);
+			return -1;
+		}
+		strncpy(virt_snd->jacks[virt_snd->jack_cnt]->identifier, ident, VIRTIO_SOUND_IDENTIFIER);
+		virt_snd->jacks[virt_snd->jack_cnt]->elem = NULL;
+		virt_snd->jacks[virt_snd->jack_cnt]->card = NULL;
+		virt_snd->jacks[virt_snd->jack_cnt]->hda_reg_defconf = virtio_snd_jack_parse(ident);
+		if (c != NULL && strcmp(c, "connect") == 0)
+			virt_snd->jacks[virt_snd->jack_cnt]->connected = 1;
+		else
+			virt_snd->jacks[virt_snd->jack_cnt]->connected = 0;
+		virt_snd->jack_cnt++;
+	} else {
+		WPRINTF("%s: emu card unsupport %s ctl elem!\n", __func__, ident);
+	}
+	free(cpy);
+	return 0;
+}
+
+static int
 virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *identifier)
 {
 	snd_ctl_elem_info_t *info;
@@ -1891,26 +1958,13 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 
 	struct vbs_card *card;
 	char card_name[VIRTIO_SOUND_CARD_NAME];
-	int idx;
 
-	if (strspn(card_str, "0123456789") == strlen(card_str)) {
-		idx = snd_card_get_index(card_str);
-		if (idx >= 0 && idx < 32)
-#if defined(SND_LIB_VER)
-#if SND_LIB_VER(1, 2, 5) <= SND_LIB_VERSION
-			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "sysdefault:%i", idx);
-#else
-			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
-#endif
-#else
-			snprintf(card_name, VIRTIO_SOUND_CARD_NAME, "hw:%i", idx);
-#endif
-		else {
-			WPRINTF("%s: card(%s) err, get %s ctl elem fail!\n", __func__, card_str, identifier);
-			return -1;
-		}
-	} else {
-		strncpy(card_name, card_str, VIRTIO_SOUND_CARD_NAME);
+	if (virtio_sound_init_emu_ctl(virt_snd, card_str, identifier) == 0) {
+		return 0;
+	}
+	if (virtio_sound_get_card_name(card_str, card_name) < 0) {
+		WPRINTF("%s: card(%s) err, get %s ctl elem fail!\n", __func__, card_str, identifier);
+		return -1;
 	}
 	card = virtio_sound_get_card(virt_snd, card_name);
 	if(card == NULL) {
@@ -1934,6 +1988,7 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 		virt_snd->jacks[virt_snd->jack_cnt]->card = card;
 		virt_snd->jacks[virt_snd->jack_cnt]->hda_reg_defconf = virtio_snd_jack_parse(identifier);
 		virt_snd->jacks[virt_snd->jack_cnt]->connected = virtio_sound_get_jack_value(elem);
+		virt_snd->jacks[virt_snd->jack_cnt]->identifier = NULL;
 		snd_hctl_elem_set_callback(elem, virtio_sound_event_callback);
 		virt_snd->jack_cnt++;
 	} else {
@@ -2038,6 +2093,67 @@ virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *
 	vq_relchain(vq, idx, sizeof(struct virtio_snd_event));
 	vq_endchains(vq, 0);
 
+	return 0;
+}
+
+int
+virtio_sound_inject_jack_event(char *param)
+{
+	struct virtio_sound *virt_snd = virtio_sound_get_device();
+	struct vbs_jack_elem *jack;
+	struct virtio_snd_event event;
+
+	int logic_state = -1, i;
+	char *identifier, *c, *cpy;
+
+	if (virt_snd == NULL || strstr(param, "Jack") == NULL) {
+		return -1;
+	}
+
+	c = cpy = strdup(param);
+	identifier = strsep(&c, "@");
+	if (identifier == NULL || c == NULL) {
+		free(cpy);
+		WPRINTF("%s: parameter is error %s", __func__, cpy);
+		return -1;
+	}
+	if (strcmp(c, "connect") == 0) {
+		logic_state = 1;
+	} else if (strcmp(c, "unconnect") == 0) {
+		logic_state = 0;
+	} else {
+		WPRINTF("%s: connect status error %s\n", __func__, c);
+		free(cpy);
+		return -1;
+	}
+	for (i = 0; i < virt_snd->jack_cnt; i++) {
+		if (virt_snd->jacks[i]->identifier != NULL &&
+			strcmp(identifier, virt_snd->jacks[i]->identifier) == 0) {
+			break;
+		}
+	}
+	if (i == virt_snd->jack_cnt) {
+		WPRINTF("%s: no match jack, param %s\n", __func__, cpy);
+		free(cpy);
+		return -1;
+	}
+	jack = virt_snd->jacks[i];
+
+	if (logic_state != jack->connected && logic_state == 1) {
+		event.hdr.code = VIRTIO_SND_EVT_JACK_CONNECTED;
+		event.data = i;
+		if (virtio_sound_send_event(virt_snd, &event) != 0) {
+			WPRINTF("%s: event send fail!\n", __func__);
+		}
+	} else if (logic_state != jack->connected && logic_state == 0) {
+		event.hdr.code = VIRTIO_SND_EVT_JACK_DISCONNECTED;
+		event.data = i;
+		if (virtio_sound_send_event(virt_snd, &event) != 0) {
+			WPRINTF("%s: event send fail!\n", __func__);
+		}
+	}
+	jack->connected = logic_state;
+	free(cpy);
 	return 0;
 }
 
@@ -2278,6 +2394,8 @@ virtio_sound_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 		free(virt_snd->ctls[i]);
 	}
 	for (i = 0; i < virt_snd->jack_cnt; i++) {
+		if(virt_snd->jacks[i]->identifier)
+			free(virt_snd->jacks[i]->identifier);
 		free(virt_snd->jacks[i]);
 	}
 	for (i = 0; i < virt_snd->card_cnt; i++) {
