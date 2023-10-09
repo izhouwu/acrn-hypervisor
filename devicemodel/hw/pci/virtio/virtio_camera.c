@@ -298,7 +298,19 @@ static int get_stride_size(int width, int format)
 
 static int get_frame_size(int width, int height, int format)
 {
-	return get_stride_size(width, format) * height;
+	int frame_size;
+
+	switch (format)	{
+		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_NV21:
+			frame_size = get_stride_size(width,format) * height * 3 /2;
+			break;
+		default:
+			frame_size = get_stride_size(width,format) * height;
+			break;
+	}
+
+	return frame_size;
 }
 
 int iov_from_buf(struct iovec *iov, uint32_t segment, void *pdata, int size)
