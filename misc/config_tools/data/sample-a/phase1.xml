@@ -58,6 +58,7 @@
     </os_config>
     <lapic_passthrough>n</lapic_passthrough>
     <nested_virtualization_support>n</nested_virtualization_support>
+    <virtual_thermal_monitor>y</virtual_thermal_monitor>
     <load_order>SERVICE_VM</load_order>
     <name>VM0</name>
     <own_pcpu>n</own_pcpu>
