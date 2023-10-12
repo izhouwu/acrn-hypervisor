@@ -132,6 +132,8 @@ struct virtio_sound_pcm {
 	pthread_mutex_t ctl_mtx;
 	int xfer_iov_cnt;
 	int id;
+	uint32_t ret_len;
+	uint16_t ret_idx;
 
 
 	pthread_t tid;
@@ -711,6 +713,7 @@ virtio_sound_pcm_thread(void *param)
 {
 	unsigned short revents;
 	struct virtio_sound_pcm *stream = (struct virtio_sound_pcm*)param;
+	struct virtio_vq_info *ctl_vq = &virtio_sound_get_device()->vq[0];
 	int err;
 
 	do {
@@ -746,6 +749,8 @@ virtio_sound_pcm_thread(void *param)
 		}
 		stream->handle = NULL;
 	}
+	vq_relchain(ctl_vq, stream->ret_idx, stream->ret_len);
+	vq_endchains(ctl_vq, 1);
 	free(stream->poll_fd);
 	stream->poll_fd = NULL;
 	stream->status = VIRTIO_SND_BE_INITED;
@@ -1044,7 +1049,7 @@ virtio_sound_r_pcm_prepare(struct virtio_sound *virt_snd, struct iovec *iov, uin
 }
 
 static int
-virtio_sound_r_pcm_release(struct virtio_sound *virt_snd, struct iovec *iov, uint8_t n)
+virtio_sound_r_pcm_release(struct virtio_sound *virt_snd, struct iovec *iov, uint8_t n, uint16_t idx)
 {
 	int s;
 	struct virtio_snd_pcm_hdr *pcm = (struct virtio_snd_pcm_hdr *)iov[0].iov_base;
@@ -1061,6 +1066,8 @@ virtio_sound_r_pcm_release(struct virtio_sound *virt_snd, struct iovec *iov, uin
 	}
 	pthread_mutex_lock(&virt_snd->streams[s]->ctl_mtx);
 	virt_snd->streams[s]->status = VIRTIO_SND_BE_RELEASE;
+	virt_snd->streams[s]->ret_idx = idx;
+	virt_snd->streams[s]->ret_len = iov[1].iov_len;
 	pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 	ret->code = VIRTIO_SND_S_OK;
 	virtio_sound_update_iov_cnt(virt_snd, virt_snd->streams[s]->dir);
@@ -1564,7 +1571,7 @@ static void
 virtio_sound_notify_ctl(void *vdev, struct virtio_vq_info *vq)
 {
 	struct virtio_sound *virt_snd = vdev;
-	struct virtio_snd_query_info *info;
+	struct virtio_snd_query_info *info = NULL;
 	struct iovec iov[VIRTIO_SOUND_CTL_SEGS];
 	int n, ret_len = 0;
 	uint16_t idx;
@@ -1593,7 +1600,7 @@ virtio_sound_notify_ctl(void *vdev, struct virtio_vq_info *vq)
 				ret_len = virtio_sound_r_pcm_prepare(virt_snd, iov, n);
 				break;
 			case VIRTIO_SND_R_PCM_RELEASE:
-				ret_len = virtio_sound_r_pcm_release(virt_snd, iov, n);
+				ret_len = virtio_sound_r_pcm_release(virt_snd, iov, n, idx);
 				break;
 			case VIRTIO_SND_R_PCM_START:
 				ret_len = virtio_sound_r_pcm_start(virt_snd, iov, n);
@@ -1629,8 +1636,8 @@ virtio_sound_notify_ctl(void *vdev, struct virtio_vq_info *vq)
 				WPRINTF("%s: unsupported request 0x%X!\n", __func__, n);
 				break;
 		}
-
-		vq_relchain(vq, idx, ret_len);
+		if (info->hdr.code != VIRTIO_SND_R_PCM_RELEASE)
+			vq_relchain(vq, idx, ret_len);
 	}
 	vq_endchains(vq, 1);
 }
