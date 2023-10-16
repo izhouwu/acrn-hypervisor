@@ -1035,7 +1035,7 @@ virtio_sound_r_pcm_prepare(struct virtio_sound *virt_snd, struct iovec *iov, uin
 {
 	struct virtio_snd_pcm_hdr *pcm = (struct virtio_snd_pcm_hdr *)iov[0].iov_base;
 	struct virtio_snd_hdr *ret = iov[1].iov_base;
-	int s;
+	int s, err;
 
 	if (n != 2) {
 		WPRINTF("%s: invalid seg num %d!\n", __func__, n);
@@ -1054,24 +1054,35 @@ virtio_sound_r_pcm_prepare(struct virtio_sound *virt_snd, struct iovec *iov, uin
 		return (int)iov[1].iov_len;
 	}
 	ret->code = VIRTIO_SND_S_OK;
-	if(!virt_snd->streams[s]->handle)
+	if(!virt_snd->streams[s]->handle) {
 		if (snd_pcm_open(&virt_snd->streams[s]->handle, virt_snd->streams[s]->dev_name,
 			virt_snd->streams[s]->dir, SND_PCM_NONBLOCK) < 0  || virt_snd->streams[s]->handle == NULL) {
-			pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 			WPRINTF("%s: stream %s open fail!\n", __func__, virt_snd->streams[s]->dev_name);
-			ret->code = VIRTIO_SND_S_BAD_MSG;
-			return (int)iov[1].iov_len;
+			goto err;
 		}
-
+		err = virtio_sound_set_hwparam(virt_snd->streams[s]);
+		if (err < 0) {
+			WPRINTF("%s: set hw params fail!\n", __func__);
+			goto err;
+		}
+		err = virtio_sound_set_swparam(virt_snd->streams[s]);
+		if (err < 0) {
+			WPRINTF("%s: set sw params fail!\n", __func__);
+			goto err;
+		}
+	}
 	if (snd_pcm_prepare(virt_snd->streams[s]->handle) < 0) {
-		pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
 		WPRINTF("%s: stream %s prepare fail!\n", __func__, virt_snd->streams[s]->dev_name);
-		ret->code = VIRTIO_SND_S_BAD_MSG;
-		return (int)iov[1].iov_len;
+		goto err;
 	}
 
 	virt_snd->streams[s]->status = VIRTIO_SND_BE_PRE;
 	pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
+	return (int)iov[1].iov_len;
+
+err:
+	pthread_mutex_unlock(&virt_snd->streams[s]->ctl_mtx);
+	ret->code = VIRTIO_SND_S_BAD_MSG;
 	return (int)iov[1].iov_len;
 }
 
