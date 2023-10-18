@@ -310,7 +310,7 @@ def generate_for_one_vm(board_etree, hv_scenario_etree, vm_scenario_etree, vm_id
         vbdf = eval_xpath(ivshmem, f".//VBDF/text()")
         slot = get_slot_by_vbdf(vbdf)
         func = get_function_by_vbdf(vbdf)
-        script.add_virtual_device(f"ivshmem", str(slot) + ":" + str(func), options=f"{vbdf} dm:/{ivshmem.find('NAME').text},{ivshmem.find('IVSHMEM_SIZE').text}")
+        script.add_virtual_device(f"ivshmem", str(slot) + ":" + str(func), options=f"dm:/{ivshmem.find('NAME').text},{ivshmem.find('IVSHMEM_SIZE').text}")
 
     for ivshmem in eval_xpath_all(vm_scenario_etree, f"//IVSHMEM_REGION[PROVIDED_BY = 'Hypervisor' and .//VM_NAME = '{vm_name}']"):
         vbdf = eval_xpath(ivshmem, f".//VBDF/text()")
