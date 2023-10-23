@@ -1725,6 +1725,81 @@ virtio_sound_rate_support(snd_pcm_t *handle, uint32_t rate, int dir)
 }
 
 static int
+virtio_sound_pcm_fake_param_init(struct virtio_sound_pcm *stream, int dir, char *name, int fn_id, char *param)
+{
+	struct str2mask {
+		char str[8];
+		int val;
+	};
+	struct str2mask format[]={
+		{"S16", VIRTIO_SND_PCM_FMT_S16},
+		{"U16", VIRTIO_SND_PCM_FMT_U16},
+		{"S32", VIRTIO_SND_PCM_FMT_S32},
+		{"U32", VIRTIO_SND_PCM_FMT_U32},
+	};
+	struct str2mask rate[]={
+		{"16000", VIRTIO_SND_PCM_RATE_16000},
+		{"48000", VIRTIO_SND_PCM_RATE_48000},
+		{"96000", VIRTIO_SND_PCM_RATE_96000},
+		{"192000", VIRTIO_SND_PCM_RATE_192000},
+	};
+
+	char *arg, *val, *cpy;
+	int i, len;
+
+	stream->dir = dir;
+	stream->hda_fn_nid = fn_id;
+
+	stream->param.formats = 1 << VIRTIO_SND_PCM_FMT_S16;
+	stream->param.rates = 1 << VIRTIO_SND_PCM_RATE_48000;
+	stream->param.features = (1 << VIRTIO_SND_PCM_F_EVT_XRUNS);
+	stream->param.channels_min = 2;
+	stream->param.channels_max = 2;
+
+	do {
+		val = strsep(&param, ",");
+		cpy = strdup(val);
+		arg = strsep(&val, "=");
+		if (val == NULL || arg == NULL) {
+			WPRINTF("%s: %s param err\n", __func__, cpy);
+			free(cpy);
+			continue;
+		}
+
+		if (strcmp(arg, "format") == 0) {
+			len = sizeof(format) / sizeof(struct str2mask);
+			for (i = 0; i < len; i++) {
+				if (strcmp(val, format[i].str) == 0) {
+					stream->param.formats = 1 << format[i].val;
+					break;
+				}
+			}
+			if (i == len)
+				WPRINTF("%s: %s param err\n", __func__, cpy);
+		} else if (strcmp(arg, "rate") == 0) {
+			len = sizeof(rate) / sizeof(struct str2mask);
+			for (i = 0; i < len; i++) {
+				if (strcmp(val, rate[i].str) == 0) {
+					stream->param.rates = 1 << rate[i].val;
+					break;
+				}
+			}
+			if (i == len)
+				WPRINTF("%s: %s param err\n", __func__, cpy);
+		} else if (strcmp(arg, "channels_min") == 0) {
+			stream->param.channels_min = atoi(val);
+		} else if (strcmp(arg, "channels_max") == 0) {
+			stream->param.channels_max = atoi(val);
+		} else {
+			WPRINTF("%s: %s param err\n", __func__, cpy);
+		}
+		free(cpy);
+	} while (param != NULL);
+
+	return 0;
+}
+
+static int
 virtio_sound_pcm_param_init(struct virtio_sound_pcm *stream, int dir, char *name, int fn_id)
 {
 	snd_pcm_hw_params_t *hwparams;
@@ -1732,7 +1807,6 @@ virtio_sound_pcm_param_init(struct virtio_sound_pcm *stream, int dir, char *name
 	uint32_t channels_min, channels_max, i, j;
 
 	stream->dir = dir;
-	strncpy(stream->dev_name, name, VIRTIO_SOUND_DEVICE_NAME);
 	stream->hda_fn_nid = fn_id;
 
 	if (snd_pcm_open(&stream->handle, stream->dev_name,
@@ -1795,11 +1869,15 @@ virtio_sound_pcm_param_init(struct virtio_sound_pcm *stream, int dir, char *name
 }
 
 static int
-virtio_sound_pcm_init(struct virtio_sound *virt_snd, char *device, char *hda_fn_nid, int dir)
+virtio_sound_pcm_init(struct virtio_sound *virt_snd, char *device, char *hda_fn_nid, char *param, int dir)
 {
 	struct virtio_sound_pcm *stream;
 	int err;
 
+	if (device == NULL || hda_fn_nid == NULL) {
+		WPRINTF("%s: pcm stream parameter error!\n", __func__);
+		return -1;
+	}
 	if (virt_snd->stream_cnt >= VIRTIO_SOUND_STREAMS) {
 		WPRINTF("%s: too many audio streams(%d)!\n", __func__, VIRTIO_SOUND_VQ_NUM);
 		return -1;
@@ -1814,14 +1892,26 @@ virtio_sound_pcm_init(struct virtio_sound *virt_snd, char *device, char *hda_fn_
 	stream->id = virt_snd->stream_cnt;
 	strncpy(stream->dev_name, device, VIRTIO_SOUND_DEVICE_NAME);
 	stream->hda_fn_nid = atoi(hda_fn_nid);
-	if (virtio_sound_pcm_param_init(stream, dir, stream->dev_name, stream->hda_fn_nid) == 0) {
-		virt_snd->streams[virt_snd->stream_cnt] = stream;
-		virt_snd->stream_cnt++;
-		virt_snd->chmap_cnt += stream->chmap_cnt;
+	if (param != NULL) {
+		if (virtio_sound_pcm_fake_param_init(stream, dir, stream->dev_name, stream->hda_fn_nid, param) == 0) {
+			virt_snd->streams[virt_snd->stream_cnt] = stream;
+			virt_snd->stream_cnt++;
+			virt_snd->chmap_cnt += stream->chmap_cnt;
+		} else {
+			WPRINTF("%s: stream %s param init error!\n", __func__, stream->dev_name);
+			free(stream);
+			return -1;
+		}
 	} else {
-		WPRINTF("%s: stream %s close error!\n", __func__, stream->dev_name);
-		free(stream);
-		return -1;
+		if (virtio_sound_pcm_param_init(stream, dir, stream->dev_name, stream->hda_fn_nid) == 0) {
+			virt_snd->streams[virt_snd->stream_cnt] = stream;
+			virt_snd->stream_cnt++;
+			virt_snd->chmap_cnt += stream->chmap_cnt;
+		} else {
+			WPRINTF("%s: stream %s param init error!\n", __func__, stream->dev_name);
+			free(stream);
+			return -1;
+		}
 	}
 	err = pthread_mutex_init(&stream->mtx, NULL);
 	if (err) {
@@ -2020,7 +2110,7 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 static int
 virtio_sound_parse_opts(struct virtio_sound *virt_snd, char *opts)
 {
-	char *str, *type, *cpy, *c, *param, *device, *identifier;
+	char *str, *type, *cpy, *c, *param, *device, *identifier, *fn_id;
 
 	/*
 	 * Virtio sound command line should be:
@@ -2043,7 +2133,8 @@ virtio_sound_parse_opts(struct virtio_sound *virt_snd, char *opts)
 		if (strstr("pcmp", type)) {
 			while ((param = strsep(&str, "|")) != NULL) {
 				device = strsep(&param, "@");
-				if (virtio_sound_pcm_init(virt_snd, device, param, VIRTIO_SND_D_OUTPUT) < 0) {
+				fn_id = strsep(&param, "@");
+				if (virtio_sound_pcm_init(virt_snd, device, fn_id, param, VIRTIO_SND_D_OUTPUT) < 0) {
 					WPRINTF("%s: fail to init pcm stream %s!\n", __func__, param);
 					free(c);
 					return -1;
@@ -2052,7 +2143,8 @@ virtio_sound_parse_opts(struct virtio_sound *virt_snd, char *opts)
 		} else if (strstr("pcmc", type)) {
 			while ((param = strsep(&str, "|")) != NULL) {
 				device = strsep(&param, "@");
-				if (virtio_sound_pcm_init(virt_snd, device, param, VIRTIO_SND_D_INPUT) < 0) {
+				fn_id = strsep(&param, "@");
+				if (virtio_sound_pcm_init(virt_snd, device, fn_id, param, VIRTIO_SND_D_INPUT) < 0) {
 					WPRINTF("%s: fail to init pcm stream %s!\n", __func__, param);
 					free(c);
 					return -1;
