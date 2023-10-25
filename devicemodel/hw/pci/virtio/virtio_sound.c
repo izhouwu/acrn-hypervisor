@@ -2113,8 +2113,8 @@ virtio_sound_inject_jack_event(char *param)
 	c = cpy = strdup(param);
 	identifier = strsep(&c, "@");
 	if (identifier == NULL || c == NULL) {
-		free(cpy);
 		WPRINTF("%s: parameter is error %s", __func__, cpy);
+		free(cpy);
 		return -1;
 	}
 	if (strcmp(c, "connect") == 0) {
