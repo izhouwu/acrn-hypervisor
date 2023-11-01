@@ -5,154 +5,22 @@
  *
  */
 
-#include <sys/cdefs.h>
-#include <sys/param.h>
-#include <sys/uio.h>
-#include <sys/ioctl.h>
 #include <sys/eventfd.h>
 #include <errno.h>
-#include <stdarg.h>
 #include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <linux/vhost.h>
 
-#include "dm.h"
 #include "pci_core.h"
-#include "irq.h"
 #include "vmmapi.h"
 #include "vhost.h"
+#include "vhost_internal.h"
 
 static int vhost_debug;
 #define LOG_TAG "vhost: "
 #define DPRINTF(fmt, args...) \
-       do { if (vhost_debug) pr_dbg(LOG_TAG fmt, ##args); } while (0)
+	do { if (vhost_debug) pr_dbg(LOG_TAG fmt, ##args); } while (0)
 #define WPRINTF(fmt, args...) pr_err(LOG_TAG fmt, ##args)
-
-inline
-int vhost_kernel_ioctl(struct vhost_dev *vdev,
-		       unsigned long int request,
-		       void *arg)
-{
-	int rc;
-
-	rc = ioctl(vdev->fd, request, arg);
-	if (rc < 0)
-		WPRINTF("ioctl failed, fd = %d, request = 0x%lx,"
-			" rc = %d, errno = %d\n",
-			vdev->fd, request, rc, errno);
-	return rc;
-}
-
-static void
-vhost_kernel_init(struct vhost_dev *vdev, struct virtio_base *base,
-		  int fd, int vq_idx, uint32_t busyloop_timeout)
-{
-	vdev->base = base;
-	vdev->fd = fd;
-	vdev->vq_idx = vq_idx;
-	vdev->busyloop_timeout = busyloop_timeout;
-}
-
-static void
-vhost_kernel_deinit(struct vhost_dev *vdev)
-{
-	vdev->base = NULL;
-	vdev->vq_idx = 0;
-	vdev->busyloop_timeout = 0;
-	if (vdev->fd > 0) {
-		close(vdev->fd);
-		vdev->fd = -1;
-	}
-}
-
-static int
-vhost_kernel_set_mem_table(struct vhost_dev *vdev,
-			   struct vhost_memory *mem)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_MEM_TABLE, mem);
-}
-
-static int
-vhost_kernel_set_vring_addr(struct vhost_dev *vdev,
-			    struct vhost_vring_addr *addr)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_ADDR, addr);
-}
-
-static int
-vhost_kernel_set_vring_num(struct vhost_dev *vdev,
-			   struct vhost_vring_state *ring)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_NUM, ring);
-}
-
-static int
-vhost_kernel_set_vring_base(struct vhost_dev *vdev,
-			    struct vhost_vring_state *ring)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_BASE, ring);
-}
-
-static int
-vhost_kernel_get_vring_base(struct vhost_dev *vdev,
-			    struct vhost_vring_state *ring)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_GET_VRING_BASE, ring);
-}
-
-static int
-vhost_kernel_set_vring_kick(struct vhost_dev *vdev,
-			    struct vhost_vring_file *file)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_KICK, file);
-}
-
-static int
-vhost_kernel_set_vring_call(struct vhost_dev *vdev,
-			    struct vhost_vring_file *file)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_CALL, file);
-}
-
-static int
-vhost_kernel_set_vring_busyloop_timeout(struct vhost_dev *vdev,
-					struct vhost_vring_state *s)
-{
-#ifdef VHOST_SET_VRING_BUSYLOOP_TIMEOUT
-	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_BUSYLOOP_TIMEOUT, s);
-#else
-	return 0;
-#endif
-}
-
-static int
-vhost_kernel_set_features(struct vhost_dev *vdev,
-			  uint64_t features)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_FEATURES, &features);
-}
-
-static int
-vhost_kernel_get_features(struct vhost_dev *vdev,
-			  uint64_t *features)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_GET_FEATURES, features);
-}
-
-static int
-vhost_kernel_set_owner(struct vhost_dev *vdev)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_SET_OWNER, NULL);
-}
-
-static int
-vhost_kernel_reset_device(struct vhost_dev *vdev)
-{
-	return vhost_kernel_ioctl(vdev, VHOST_RESET_OWNER, NULL);
-}
 
 static int
 vhost_eventfd_test_and_clear(int fd)
@@ -324,7 +192,7 @@ vhost_vq_start(struct vhost_dev *vdev, int idx)
 	/* VHOST_SET_VRING_NUM */
 	ring.index = idx;
 	ring.num = vqi->qsize;
-	rc = vhost_kernel_set_vring_num(vdev, &ring);
+	rc = vdev->vhost_ops->vhost_set_vring_num(vdev, &ring);
 	if (rc < 0) {
 		WPRINTF("set_vring_num failed: idx = %d\n", idx);
 		goto fail_vring;
@@ -332,7 +200,7 @@ vhost_vq_start(struct vhost_dev *vdev, int idx)
 
 	/* VHOST_SET_VRING_BASE */
 	ring.num = vqi->last_avail;
-	rc = vhost_kernel_set_vring_base(vdev, &ring);
+	rc = vdev->vhost_ops->vhost_set_vring_base(vdev, &ring);
 	if (rc < 0) {
 		WPRINTF("set_vring_base failed: idx = %d, last_avail = %d\n",
 			idx, vqi->last_avail);
@@ -346,7 +214,7 @@ vhost_vq_start(struct vhost_dev *vdev, int idx)
 	addr.used_user_addr = (uintptr_t)vqi->used;
 	addr.log_guest_addr = (uintptr_t)NULL;
 	addr.flags = 0;
-	rc = vhost_kernel_set_vring_addr(vdev, &addr);
+	rc = vdev->vhost_ops->vhost_set_vring_addr(vdev, &addr);
 	if (rc < 0) {
 		WPRINTF("set_vring_addr failed: idx = %d\n", idx);
 		goto fail_vring;
@@ -355,7 +223,7 @@ vhost_vq_start(struct vhost_dev *vdev, int idx)
 	/* VHOST_SET_VRING_CALL */
 	file.index = idx;
 	file.fd = vq->call_fd;
-	rc = vhost_kernel_set_vring_call(vdev, &file);
+	rc = vdev->vhost_ops->vhost_set_vring_call(vdev, &file);
 	if (rc < 0) {
 		WPRINTF("set_vring_call failed\n");
 		goto fail_vring;
@@ -364,7 +232,7 @@ vhost_vq_start(struct vhost_dev *vdev, int idx)
 	/* VHOST_SET_VRING_KICK */
 	file.index = idx;
 	file.fd = vq->kick_fd;
-	rc = vhost_kernel_set_vring_kick(vdev, &file);
+	rc = vdev->vhost_ops->vhost_set_vring_kick(vdev, &file);
 	if (rc < 0) {
 		WPRINTF("set_vring_kick failed: idx = %d", idx);
 		goto fail_vring_kick;
@@ -375,7 +243,7 @@ vhost_vq_start(struct vhost_dev *vdev, int idx)
 fail_vring_kick:
 	file.index = idx;
 	file.fd = -1;
-	vhost_kernel_set_vring_call(vdev, &file);
+	vdev->vhost_ops->vhost_set_vring_call(vdev, &file);
 fail_vring:
 	vhost_vq_register_eventfd(vdev, idx, false);
 fail:
@@ -409,14 +277,14 @@ vhost_vq_stop(struct vhost_dev *vdev, int idx)
 	file.fd = -1;
 
 	/* VHOST_SET_VRING_KICK */
-	vhost_kernel_set_vring_kick(vdev, &file);
+	vdev->vhost_ops->vhost_set_vring_kick(vdev, &file);
 
 	/* VHOST_SET_VRING_CALL */
-	vhost_kernel_set_vring_call(vdev, &file);
+	vdev->vhost_ops->vhost_set_vring_call(vdev, &file);
 
 	/* VHOST_GET_VRING_BASE */
 	ring.index = idx;
-	rc = vhost_kernel_get_vring_base(vdev, &ring);
+	rc = vdev->vhost_ops->vhost_get_vring_base(vdev, &ring);
 	if (rc < 0)
 		WPRINTF("get_vring_base failed: idx = %d", idx);
 	else
@@ -431,66 +299,6 @@ vhost_vq_stop(struct vhost_dev *vdev, int idx)
 		WPRINTF("unregister eventfd failed: idx = %d\n", idx);
 
 	return rc;
-}
-
-static int
-vhost_set_mem_table(struct vhost_dev *vdev)
-{
-	struct vmctx *ctx;
-	struct vhost_memory *mem;
-	uint32_t nregions = 0;
-	int rc;
-
-	ctx = vdev->base->dev->vmctx;
-	if (ctx->lowmem > 0)
-		nregions++;
-	if (ctx->highmem > 0)
-		nregions++;
-
-	mem = calloc(1, sizeof(struct vhost_memory) +
-		sizeof(struct vhost_memory_region) * nregions);
-	if (!mem) {
-		WPRINTF("out of memory\n");
-		return -1;
-	}
-
-	nregions = 0;
-	if (ctx->lowmem > 0) {
-		mem->regions[nregions].guest_phys_addr = (uintptr_t)0;
-		mem->regions[nregions].memory_size = ctx->lowmem;
-		mem->regions[nregions].userspace_addr =
-			(uintptr_t)ctx->baseaddr;
-		DPRINTF("[%d][0x%llx -> 0x%llx, 0x%llx]\n",
-			nregions,
-			mem->regions[nregions].guest_phys_addr,
-			mem->regions[nregions].userspace_addr,
-			mem->regions[nregions].memory_size);
-		nregions++;
-	}
-
-	if (ctx->highmem > 0) {
-		mem->regions[nregions].guest_phys_addr = ctx->highmem_gpa_base;
-		mem->regions[nregions].memory_size = ctx->highmem;
-		mem->regions[nregions].userspace_addr =
-			(uintptr_t)(ctx->baseaddr + ctx->highmem_gpa_base);
-		DPRINTF("[%d][0x%llx -> 0x%llx, 0x%llx]\n",
-			nregions,
-			mem->regions[nregions].guest_phys_addr,
-			mem->regions[nregions].userspace_addr,
-			mem->regions[nregions].memory_size);
-		nregions++;
-	}
-
-	mem->nregions = nregions;
-	mem->padding = 0;
-	rc = vhost_kernel_set_mem_table(vdev, mem);
-	free(mem);
-	if (rc < 0) {
-		WPRINTF("set_mem_table failed\n");
-		return -1;
-	}
-
-	return 0;
 }
 
 /**
@@ -537,9 +345,18 @@ vhost_dev_init(struct vhost_dev *vdev,
 		goto fail;
 	}
 
-	vhost_kernel_init(vdev, base, fd, vq_idx, busyloop_timeout);
+	if (base->backend_type == BACKEND_VHOST) {
+		vdev->vhost_ops = &vhost_kernel_ops;
+	} else if (base->backend_type == BACKEND_VHOST_USER) {
+		vdev->vhost_ops = &vhost_user_ops;
+	} else {
+		WPRINTF("invalid vhost backend type: %d\n", base->backend_type);
+		goto fail;
+	}
 
-	rc = vhost_kernel_get_features(vdev, &features);
+	vdev->vhost_ops->vhost_init(vdev, base, fd, vq_idx, busyloop_timeout);
+
+	rc = vdev->vhost_ops->vhost_get_features(vdev, &features);
 	if (rc < 0) {
 		WPRINTF("vhost_get_features failed\n");
 		goto fail;
@@ -593,7 +410,7 @@ vhost_dev_deinit(struct vhost_dev *vdev)
 	for (i = 0; i < vdev->nvqs; i++)
 		vhost_vq_deinit(&vdev->vqs[i]);
 
-	vhost_kernel_deinit(vdev);
+	vdev->vhost_ops->vhost_deinit(vdev);
 
 	return 0;
 }
@@ -634,7 +451,7 @@ vhost_dev_start(struct vhost_dev *vdev)
 		goto fail;
 	}
 
-	rc = vhost_kernel_set_owner(vdev);
+	rc = vdev->vhost_ops->vhost_set_owner(vdev);
 	if (rc < 0) {
 		WPRINTF("vhost_set_owner failed\n");
 		goto fail;
@@ -643,7 +460,7 @@ vhost_dev_start(struct vhost_dev *vdev)
 	/* set vhost internal features */
 	features = (vdev->base->negotiated_caps & vdev->vhost_features) |
 		vdev->vhost_ext_features;
-	rc = vhost_kernel_set_features(vdev, features);
+	rc = vdev->vhost_ops->vhost_set_features(vdev, features);
 	if (rc < 0) {
 		WPRINTF("set_features failed\n");
 		goto fail;
@@ -651,18 +468,19 @@ vhost_dev_start(struct vhost_dev *vdev)
 	DPRINTF("set_features: 0x%lx\n", features);
 
 	/* set memory table */
-	rc = vhost_set_mem_table(vdev);
+	rc = vdev->vhost_ops->vhost_set_mem_table(vdev);
 	if (rc < 0) {
 		WPRINTF("set_mem_table failed\n");
 		goto fail;
 	}
 
 	/* config busyloop timeout */
-	if (vdev->busyloop_timeout) {
+	if (vdev->busyloop_timeout &&
+		vdev->vhost_ops->vhost_set_vring_busyloop_timeout) {
 		state.num = vdev->busyloop_timeout;
 		for (i = 0; i < vdev->nvqs; i++) {
 			state.index = i;
-			rc = vhost_kernel_set_vring_busyloop_timeout(vdev,
+			rc = vdev->vhost_ops->vhost_set_vring_busyloop_timeout(vdev,
 				&state);
 			if (rc < 0) {
 				WPRINTF("set_busyloop_timeout failed\n");
@@ -709,7 +527,7 @@ vhost_dev_stop(struct vhost_dev *vdev)
 	 * 1) resources of the vhost dev are freed
 	 * 2) vhost virtqueues are reset
 	 */
-	rc = vhost_kernel_reset_device(vdev);
+	rc = vdev->vhost_ops->vhost_reset_device(vdev);
 	if (rc < 0) {
 		WPRINTF("vhost_reset_device failed\n");
 		rc = -1;

@@ -88,10 +88,21 @@ struct vm_isa_irq {
 	int		ioapic_irq;
 };
 
+struct vm_mmap_mem_region {
+	vm_paddr_t gpa_start;
+	vm_paddr_t gpa_end;
+	vm_paddr_t fd_offset;
+	char *hva_base;
+	int fd;
+};
+
 struct vm_mem_region {
 	uint64_t fd_offset;
 	int fd;
 };
+
+bool	vm_get_mem_region(struct vmctx *ctx, vm_paddr_t gpa,
+			struct vm_mmap_mem_region *ret_region);
 bool	vm_find_memfd_region(struct vmctx *ctx, vm_paddr_t gpa,
 			     struct vm_mem_region *ret_region);
 bool    vm_allow_dmabuf(struct vmctx *ctx);

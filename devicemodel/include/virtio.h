@@ -146,6 +146,7 @@ enum {
 	BACKEND_VBSU,
 	BACKEND_VBSK,
 	BACKEND_VHOST,
+	BACKEND_VHOST_USER,
 	BACKEND_MAX
 };
 
@@ -195,6 +196,7 @@ enum {
 #define	VIRTIO_TYPE_9P		9
 #define	VIRTIO_TYPE_INPUT	18
 #define	VIRTIO_TYPE_SOUND	25
+#define	VIRTIO_TYPE_FS		26
 
 /*
  * ACRN virtio device types

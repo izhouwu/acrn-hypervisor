@@ -14,6 +14,8 @@
 #ifndef __VHOST_H__
 #define __VHOST_H__
 
+#include <linux/vhost.h>
+
 #include "virtio.h"
 
 /**
@@ -28,6 +30,31 @@ struct vhost_vq {
 	int call_fd;		/**< fd of call eventfd */
 	int idx;		/**< index of this vq in vhost dev */
 	struct vhost_dev *dev;	/**< pointer to vhost_dev */
+};
+
+struct vhost_dev_ops {
+	int (*vhost_init)(struct vhost_dev *vdev, struct virtio_base *base,
+		  int fd, int vq_idx, uint32_t busyloop_timeout);
+	int (*vhost_deinit)(struct vhost_dev *vdev);
+	int (*vhost_set_mem_table)(struct vhost_dev *vdev);
+	int (*vhost_set_vring_addr)(struct vhost_dev *vdev,
+			    struct vhost_vring_addr *addr);
+	int (*vhost_set_vring_num)(struct vhost_dev *vdev,
+			   struct vhost_vring_state *ring);
+	int (*vhost_set_vring_base)(struct vhost_dev *vdev,
+			    struct vhost_vring_state *ring);
+	int (*vhost_get_vring_base)(struct vhost_dev *vdev,
+			    struct vhost_vring_state *ring);
+	int (*vhost_set_vring_kick)(struct vhost_dev *vdev,
+			    struct vhost_vring_file *file);
+	int (*vhost_set_vring_call)(struct vhost_dev *vdev,
+			    struct vhost_vring_file *file);
+	int (*vhost_set_vring_busyloop_timeout)(struct vhost_dev *vdev,
+					struct vhost_vring_state *s);
+	int (*vhost_set_features)(struct vhost_dev *vdev, uint64_t features);
+	int (*vhost_get_features)(struct vhost_dev *vdev, uint64_t *features);
+	int (*vhost_set_owner)(struct vhost_dev *vdev);
+	int (*vhost_reset_device)(struct vhost_dev *vdev);
 };
 
 struct vhost_dev {
@@ -71,6 +98,16 @@ struct vhost_dev {
 	 * vq busyloop timeout in us
 	 */
 	uint32_t busyloop_timeout;
+
+	/**
+	 * vhost device operation
+	 */
+	const struct vhost_dev_ops *vhost_ops;
+
+	/**
+	 * vhost device private data
+	 */
+	void *priv;
 
 	/**
 	 * whether vhost is started

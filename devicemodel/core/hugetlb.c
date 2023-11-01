@@ -127,14 +127,6 @@ static struct hugetlb_info hugetlb_priv[HUGETLB_LV_MAX] = {
 	},
 };
 
-struct vm_mmap_mem_region {
-	vm_paddr_t gpa_start;
-	vm_paddr_t gpa_end;
-	vm_paddr_t fd_offset;
-	char *hva_base;
-	int fd;
-};
-
 static struct vm_mmap_mem_region mmap_mem_regions[16];
 static int mem_idx;
 
@@ -853,6 +845,21 @@ void hugetlb_unsetup_memory(struct vmctx *ctx)
 	for (level = HUGETLB_LV1; level < hugetlb_lv_max; level++) {
 		close_hugetlbfs(level);
 	}
+}
+
+bool vm_get_mem_region(struct vmctx *ctx, vm_paddr_t gpa,
+			struct vm_mmap_mem_region *ret_region)
+{
+	int i;
+
+	for (i = 0; i < mem_idx; i++) {
+		if (mmap_mem_regions[i].gpa_start == gpa) {
+			memcpy(ret_region, &mmap_mem_regions[i], sizeof(*ret_region));
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool
