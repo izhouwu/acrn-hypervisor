@@ -149,6 +149,7 @@ SRCS += hw/pci/pci_util.c
 SRCS += hw/pci/ptm.c
 SRCS += hw/pci/virtio/virtio_audio.c
 SRCS += hw/pci/virtio/virtio_sound.c
+SRCS += hw/pci/virtio/virtio_fs.c
 SRCS += hw/pci/virtio/virtio_net.c
 SRCS += hw/pci/virtio/virtio_camera.c
 SRCS += hw/pci/virtio/virtio_rnd.c
