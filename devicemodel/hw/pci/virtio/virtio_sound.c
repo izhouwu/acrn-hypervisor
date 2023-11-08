@@ -2060,6 +2060,10 @@ virtio_sound_init_ctl_elem(struct virtio_sound *virt_snd, char *card_str, char *
 	struct vbs_card *card;
 	char card_name[VIRTIO_SOUND_CARD_NAME];
 
+	if(card_str == NULL || identifier == NULL) {
+		WPRINTF("%s: kcontrol info unset!\n", __func__);
+		return -1;
+	}
 	if (virtio_sound_init_emu_ctl(virt_snd, card_str, identifier) == 0) {
 		return 0;
 	}
@@ -2133,9 +2137,14 @@ virtio_sound_parse_opts(struct virtio_sound *virt_snd, char *opts)
 		if (strstr("pcmp", type)) {
 			while ((param = strsep(&str, "|")) != NULL) {
 				device = strsep(&param, "@");
+				if (param == NULL) {
+					WPRINTF("%s: fail to init pcmp stream %s!\n", __func__, device);
+					free(c);
+					return -1;
+				}
 				fn_id = strsep(&param, "@");
 				if (virtio_sound_pcm_init(virt_snd, device, fn_id, param, VIRTIO_SND_D_OUTPUT) < 0) {
-					WPRINTF("%s: fail to init pcm stream %s!\n", __func__, param);
+					WPRINTF("%s: fail to init pcmp stream %s!\n", __func__, device);
 					free(c);
 					return -1;
 				}
@@ -2143,9 +2152,14 @@ virtio_sound_parse_opts(struct virtio_sound *virt_snd, char *opts)
 		} else if (strstr("pcmc", type)) {
 			while ((param = strsep(&str, "|")) != NULL) {
 				device = strsep(&param, "@");
+				if (param == NULL) {
+					WPRINTF("%s: fail to init pcmc stream %s!\n", __func__, device);
+					free(c);
+					return -1;
+				}
 				fn_id = strsep(&param, "@");
 				if (virtio_sound_pcm_init(virt_snd, device, fn_id, param, VIRTIO_SND_D_INPUT) < 0) {
-					WPRINTF("%s: fail to init pcm stream %s!\n", __func__, param);
+					WPRINTF("%s: fail to init pcmc stream %s!\n", __func__, device);
 					free(c);
 					return -1;
 				}
