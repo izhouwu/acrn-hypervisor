@@ -36,7 +36,7 @@ int vhost_kernel_ioctl(struct vhost_dev *vdev,
 }
 
 static int
-vhost_kernel_init(struct vhost_dev *vdev, struct virtio_base *base,
+vhost_k_init(struct vhost_dev *vdev, struct virtio_base *base,
 		  int fd, int vq_idx, uint32_t busyloop_timeout)
 {
 	vdev->base = base;
@@ -47,7 +47,7 @@ vhost_kernel_init(struct vhost_dev *vdev, struct virtio_base *base,
 }
 
 static int
-vhost_kernel_deinit(struct vhost_dev *vdev)
+vhost_k_deinit(struct vhost_dev *vdev)
 {
 	vdev->base = NULL;
 	vdev->vq_idx = 0;
@@ -60,14 +60,14 @@ vhost_kernel_deinit(struct vhost_dev *vdev)
 }
 
 static int
-__vhost_kernel_set_mem_table(struct vhost_dev *vdev,
+__vhost_k_set_mem_table(struct vhost_dev *vdev,
 			   struct vhost_memory *mem)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_MEM_TABLE, mem);
 }
 
 static int
-vhost_kernel_set_mem_table(struct vhost_dev *vdev)
+vhost_k_set_mem_table(struct vhost_dev *vdev)
 {
 	struct vmctx *ctx;
 	struct vhost_memory *mem;
@@ -116,7 +116,7 @@ vhost_kernel_set_mem_table(struct vhost_dev *vdev)
 
 	mem->nregions = nregions;
 	mem->padding = 0;
-	rc = __vhost_kernel_set_mem_table(vdev, mem);
+	rc = __vhost_k_set_mem_table(vdev, mem);
 	free(mem);
 	if (rc < 0) {
 		WPRINTF("set_mem_table failed\n");
@@ -127,49 +127,49 @@ vhost_kernel_set_mem_table(struct vhost_dev *vdev)
 }
 
 static int
-vhost_kernel_set_vring_addr(struct vhost_dev *vdev,
+vhost_k_set_vring_addr(struct vhost_dev *vdev,
 			    struct vhost_vring_addr *addr)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_ADDR, addr);
 }
 
 static int
-vhost_kernel_set_vring_num(struct vhost_dev *vdev,
+vhost_k_set_vring_num(struct vhost_dev *vdev,
 			   struct vhost_vring_state *ring)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_NUM, ring);
 }
 
 static int
-vhost_kernel_set_vring_base(struct vhost_dev *vdev,
+vhost_k_set_vring_base(struct vhost_dev *vdev,
 			    struct vhost_vring_state *ring)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_BASE, ring);
 }
 
 static int
-vhost_kernel_get_vring_base(struct vhost_dev *vdev,
+vhost_k_get_vring_base(struct vhost_dev *vdev,
 			    struct vhost_vring_state *ring)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_GET_VRING_BASE, ring);
 }
 
 static int
-vhost_kernel_set_vring_kick(struct vhost_dev *vdev,
+vhost_k_set_vring_kick(struct vhost_dev *vdev,
 			    struct vhost_vring_file *file)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_KICK, file);
 }
 
 static int
-vhost_kernel_set_vring_call(struct vhost_dev *vdev,
+vhost_k_set_vring_call(struct vhost_dev *vdev,
 			    struct vhost_vring_file *file)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_VRING_CALL, file);
 }
 
 static int
-vhost_kernel_set_vring_busyloop_timeout(struct vhost_dev *vdev,
+vhost_k_set_vring_busyloop_timeout(struct vhost_dev *vdev,
 					struct vhost_vring_state *s)
 {
 #ifdef VHOST_SET_VRING_BUSYLOOP_TIMEOUT
@@ -180,44 +180,44 @@ vhost_kernel_set_vring_busyloop_timeout(struct vhost_dev *vdev,
 }
 
 static int
-vhost_kernel_set_features(struct vhost_dev *vdev,
+vhost_k_set_features(struct vhost_dev *vdev,
 			  uint64_t features)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_FEATURES, &features);
 }
 
 static int
-vhost_kernel_get_features(struct vhost_dev *vdev,
+vhost_k_get_features(struct vhost_dev *vdev,
 			  uint64_t *features)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_GET_FEATURES, features);
 }
 
 static int
-vhost_kernel_set_owner(struct vhost_dev *vdev)
+vhost_k_set_owner(struct vhost_dev *vdev)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_SET_OWNER, NULL);
 }
 
 static int
-vhost_kernel_reset_device(struct vhost_dev *vdev)
+vhost_k_reset_device(struct vhost_dev *vdev)
 {
 	return vhost_kernel_ioctl(vdev, VHOST_RESET_OWNER, NULL);
 }
 
 const struct vhost_dev_ops vhost_kernel_ops = {
-	.vhost_init = vhost_kernel_init,
-	.vhost_deinit = vhost_kernel_deinit,
-	.vhost_set_vring_busyloop_timeout = vhost_kernel_set_vring_busyloop_timeout,
-	.vhost_set_mem_table = vhost_kernel_set_mem_table,
-	.vhost_set_vring_addr = vhost_kernel_set_vring_addr,
-	.vhost_set_vring_num = vhost_kernel_set_vring_num,
-	.vhost_set_vring_base = vhost_kernel_set_vring_base,
-	.vhost_get_vring_base = vhost_kernel_get_vring_base,
-	.vhost_set_vring_kick = vhost_kernel_set_vring_kick,
-	.vhost_set_vring_call = vhost_kernel_set_vring_call,
-	.vhost_set_features = vhost_kernel_set_features,
-	.vhost_get_features = vhost_kernel_get_features,
-	.vhost_set_owner = vhost_kernel_set_owner,
-	.vhost_reset_device = vhost_kernel_reset_device
+	.vhost_init = vhost_k_init,
+	.vhost_deinit = vhost_k_deinit,
+	.vhost_set_vring_busyloop_timeout = vhost_k_set_vring_busyloop_timeout,
+	.vhost_set_mem_table = vhost_k_set_mem_table,
+	.vhost_set_vring_addr = vhost_k_set_vring_addr,
+	.vhost_set_vring_num = vhost_k_set_vring_num,
+	.vhost_set_vring_base = vhost_k_set_vring_base,
+	.vhost_get_vring_base = vhost_k_get_vring_base,
+	.vhost_set_vring_kick = vhost_k_set_vring_kick,
+	.vhost_set_vring_call = vhost_k_set_vring_call,
+	.vhost_set_features = vhost_k_set_features,
+	.vhost_get_features = vhost_k_get_features,
+	.vhost_set_owner = vhost_k_set_owner,
+	.vhost_reset_device = vhost_k_reset_device
 };

@@ -513,7 +513,7 @@ static int vhost_user_receive_message(int socket_fd, struct vhost_user_socket_ms
 	return 0;
 }
 
-static int __vhost_user_set_mem_table(struct vhost_dev *vdev,
+static int __vhost_u_set_mem_table(struct vhost_dev *vdev,
 	struct vhost_user_mem_region *mem, int nr_regions, int *fds)
 {
 	struct vhost_user_socket_msg vu_msg;
@@ -534,7 +534,7 @@ static int __vhost_user_set_mem_table(struct vhost_dev *vdev,
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_set_vring_addr(struct vhost_dev *vdev, struct vhost_vring_addr *addr)
+static int vhost_u_set_vring_addr(struct vhost_dev *vdev, struct vhost_vring_addr *addr)
 {
 	struct vhost_user_socket_msg vu_msg;
 
@@ -547,7 +547,7 @@ static int vhost_user_set_vring_addr(struct vhost_dev *vdev, struct vhost_vring_
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_set_vring_num(struct vhost_dev *vdev, struct vhost_vring_state *ring)
+static int vhost_u_set_vring_num(struct vhost_dev *vdev, struct vhost_vring_state *ring)
 {
 	struct vhost_user_socket_msg vu_msg;
 
@@ -560,7 +560,7 @@ static int vhost_user_set_vring_num(struct vhost_dev *vdev, struct vhost_vring_s
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_set_vring_base(struct vhost_dev *vdev, struct vhost_vring_state *ring)
+static int vhost_u_set_vring_base(struct vhost_dev *vdev, struct vhost_vring_state *ring)
 {
 	struct vhost_user_socket_msg vu_msg;
 
@@ -573,7 +573,7 @@ static int vhost_user_set_vring_base(struct vhost_dev *vdev, struct vhost_vring_
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_get_vring_base(struct vhost_dev *vdev, struct vhost_vring_state *ring)
+static int vhost_u_get_vring_base(struct vhost_dev *vdev, struct vhost_vring_state *ring)
 {
 	struct vhost_user_socket_msg vu_msg;
 	int rc;
@@ -602,7 +602,7 @@ static int vhost_user_get_vring_base(struct vhost_dev *vdev, struct vhost_vring_
 
 #define INVAILD_EVENTFD (1 << 8)
 
-static int vhost_user_set_vring_kick(struct vhost_dev *vdev, struct vhost_vring_file *file)
+static int vhost_u_set_vring_kick(struct vhost_dev *vdev, struct vhost_vring_file *file)
 {
 	struct vhost_user_socket_msg vu_msg;
 
@@ -622,7 +622,7 @@ static int vhost_user_set_vring_kick(struct vhost_dev *vdev, struct vhost_vring_
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_set_vring_call(struct vhost_dev *vdev, struct vhost_vring_file *file)
+static int vhost_u_set_vring_call(struct vhost_dev *vdev, struct vhost_vring_file *file)
 {
 	struct vhost_user_socket_msg vu_msg;
 
@@ -643,7 +643,7 @@ static int vhost_user_set_vring_call(struct vhost_dev *vdev, struct vhost_vring_
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_set_features(struct vhost_dev *vdev, uint64_t features)
+static int vhost_u_set_features(struct vhost_dev *vdev, uint64_t features)
 {
 	struct vhost_user_socket_msg vu_msg;
 
@@ -656,7 +656,7 @@ static int vhost_user_set_features(struct vhost_dev *vdev, uint64_t features)
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_get_features(struct vhost_dev *vdev, uint64_t *features)
+static int vhost_u_get_features(struct vhost_dev *vdev, uint64_t *features)
 {
 	int rc;
 	struct vhost_user_socket_msg vu_msg;
@@ -719,7 +719,7 @@ static int vhost_user_get_protocol_features(struct vhost_dev *vdev, uint64_t *fe
 	return rc;
 }
 
-static int vhost_user_set_owner(struct vhost_dev *vdev)
+static int vhost_u_set_owner(struct vhost_dev *vdev)
 {
 	struct vhost_user_socket_msg vu_msg;
 
@@ -730,7 +730,7 @@ static int vhost_user_set_owner(struct vhost_dev *vdev)
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_reset_device(struct vhost_dev *vdev)
+static int vhost_u_reset_device(struct vhost_dev *vdev)
 {
 	struct vhost_user_socket_msg vu_msg;
 	struct vhost_user_dev *vhost_user;
@@ -749,7 +749,7 @@ static int vhost_user_reset_device(struct vhost_dev *vdev)
 	return vhost_user_send_message(vdev->fd, &vu_msg);
 }
 
-static int vhost_user_set_mem_table(struct vhost_dev *vdev)
+static int vhost_u_set_mem_table(struct vhost_dev *vdev)
 {
 	struct vmctx *ctx;
 	struct vhost_user_mem_region *vu_mem_regs;
@@ -796,7 +796,7 @@ static int vhost_user_set_mem_table(struct vhost_dev *vdev)
 		}
 	}
 
-	rc = __vhost_user_set_mem_table(vdev, vu_mem_regs, nregions, fds);
+	rc = __vhost_u_set_mem_table(vdev, vu_mem_regs, nregions, fds);
 
 	free(vu_mem_regs);
 	free(fds);
@@ -809,7 +809,7 @@ static int vhost_user_set_mem_table(struct vhost_dev *vdev)
 	return 0;
 }
 
-static int vhost_user_init(struct vhost_dev *vdev, struct virtio_base *base,
+static int vhost_u_init(struct vhost_dev *vdev, struct virtio_base *base,
 		  int fd, int vq_idx, uint32_t busyloop_timeout)
 {
 	struct vhost_user_dev *vhost_user;
@@ -840,7 +840,7 @@ static int vhost_user_init(struct vhost_dev *vdev, struct virtio_base *base,
 	return 0;
 }
 
-static int vhost_user_deinit(struct vhost_dev *vdev)
+static int vhost_u_deinit(struct vhost_dev *vdev)
 {
 	struct vhost_user_dev *vhost_user;
 
@@ -860,17 +860,17 @@ static int vhost_user_deinit(struct vhost_dev *vdev)
 }
 
 const struct vhost_dev_ops vhost_user_ops = {
-	.vhost_init = vhost_user_init,
-	.vhost_deinit = vhost_user_deinit,
-	.vhost_set_mem_table = vhost_user_set_mem_table,
-	.vhost_set_vring_addr = vhost_user_set_vring_addr,
-	.vhost_set_vring_num = vhost_user_set_vring_num,
-	.vhost_set_vring_base = vhost_user_set_vring_base,
-	.vhost_get_vring_base = vhost_user_get_vring_base,
-	.vhost_set_vring_kick = vhost_user_set_vring_kick,
-	.vhost_set_vring_call = vhost_user_set_vring_call,
-	.vhost_set_features = vhost_user_set_features,
-	.vhost_get_features = vhost_user_get_features,
-	.vhost_set_owner = vhost_user_set_owner,
-	.vhost_reset_device = vhost_user_reset_device
+	.vhost_init = vhost_u_init,
+	.vhost_deinit = vhost_u_deinit,
+	.vhost_set_mem_table = vhost_u_set_mem_table,
+	.vhost_set_vring_addr = vhost_u_set_vring_addr,
+	.vhost_set_vring_num = vhost_u_set_vring_num,
+	.vhost_set_vring_base = vhost_u_set_vring_base,
+	.vhost_get_vring_base = vhost_u_get_vring_base,
+	.vhost_set_vring_kick = vhost_u_set_vring_kick,
+	.vhost_set_vring_call = vhost_u_set_vring_call,
+	.vhost_set_features = vhost_u_set_features,
+	.vhost_get_features = vhost_u_get_features,
+	.vhost_set_owner = vhost_u_set_owner,
+	.vhost_reset_device = vhost_u_reset_device
 };
