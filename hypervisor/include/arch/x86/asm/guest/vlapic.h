@@ -29,6 +29,7 @@
 #ifndef VLAPIC_H
 #define VLAPIC_H
 
+#include <acrn_common.h>
 #include <asm/page.h>
 #include <timer.h>
 #include <asm/apicreg.h>
@@ -98,7 +99,6 @@ struct acrn_apicv_ops {
 	bool (*x2apic_write_msr_may_valid)(uint32_t offset);
 };
 
-enum reset_mode;
 extern const struct acrn_apicv_ops *apicv_ops;
 void vlapic_set_apicv_ops(void);
 
@@ -195,7 +195,7 @@ void vlapic_create(struct acrn_vcpu *vcpu, uint16_t pcpu_id);
  */
 void vlapic_free(struct acrn_vcpu *vcpu);
 
-void vlapic_reset(struct acrn_vlapic *vlapic, const struct acrn_apicv_ops *ops, enum reset_mode mode);
+void vlapic_reset(struct acrn_vlapic *vlapic, const struct acrn_apicv_ops *ops, enum vlapic_reset_mode mode);
 void vlapic_restore(struct acrn_vlapic *vlapic, const struct lapic_regs *regs);
 uint64_t vlapic_apicv_get_apic_access_addr(void);
 uint64_t vlapic_apicv_get_apic_page_addr(struct acrn_vlapic *vlapic);

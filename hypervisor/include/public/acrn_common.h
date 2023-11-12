@@ -21,6 +21,58 @@
  * Common structures for ACRN/HSM/DM
  */
 
+enum vm_reset_mode {
+	VM_POWER_ON_RESET,		/* reset by hardware Power-on */
+	VM_COLD_RESET,			/* hardware cold reset */
+	VM_WARM_RESET,			/* behavior slightly differ from cold reset, that some MSRs might be retained. */
+	VM_RESUME_FROM_S3,		/* reset core states after resuming from S3 */
+	VM_RESET_MAX,
+};
+
+/* Per SDM 10.1.1 vol.3, vcpu reset should be as following types */
+enum vcpu_reset_mode {
+	VCPU_POWER_UP,			/* reset by hardware Power up */
+	VCPU_COLD_RESET,		/* hardware cold reset */
+	VCPU_WARM_RESET,		/* behavior slightly differ from cold reset, that some MSRs might be retained */
+	VCPU_INIT_RESET,		/* reset by INIT */
+	VCPU_RESET_MAX,
+	VCPU_RESET_INVALID = VCPU_RESET_MAX,
+};
+
+/* Per SDM 11.4.7(Local APIC State) vol.3, lapic state should be as following types */
+enum vlapic_reset_mode {
+	VLAPIC_POWER_UP,			/* following a power-up or reset of the processor */
+	VLAPIC_SOFTWARE_DISABLE,		/* clear APIC Software Enable/Disable flag in SVR */
+	VLAPIC_INIT_RESET,		/* following an INIT reset of the processor */
+	VLAPIC_RESET_MAX,
+	VLAPIC_RESET_INVALID = VLAPIC_RESET_MAX,
+};
+
+static const enum vcpu_reset_mode vm2vcpu[VM_RESET_MAX] = {
+	[VM_POWER_ON_RESET]	= VCPU_POWER_UP,
+	[VM_COLD_RESET]		= VCPU_COLD_RESET,
+	[VM_WARM_RESET]		= VCPU_WARM_RESET,
+	[VM_RESUME_FROM_S3]	= VCPU_COLD_RESET,
+};
+
+static inline enum vcpu_reset_mode reset_mode_vm2vcpu(enum vm_reset_mode mode)
+{
+	return (VM_POWER_ON_RESET <= mode && mode < VM_RESET_MAX) ?
+		vm2vcpu[mode] : VCPU_RESET_INVALID;
+}
+
+static const enum vlapic_reset_mode vcpu2vlapci[VCPU_RESET_MAX] = {
+	[VCPU_POWER_UP]		= VLAPIC_POWER_UP,
+	[VCPU_COLD_RESET]	= VLAPIC_POWER_UP,
+	[VCPU_WARM_RESET]	= VLAPIC_POWER_UP,
+	[VCPU_INIT_RESET]	= VLAPIC_INIT_RESET,
+};
+static inline enum vlapic_reset_mode reset_mode_vcpu2vlapic(enum vcpu_reset_mode mode)
+{
+	return (VCPU_POWER_UP <= mode && mode < VCPU_RESET_MAX) ?
+		vcpu2vlapci[mode] : VLAPIC_RESET_INVALID;
+}
+
 /*
  * IO request
  */

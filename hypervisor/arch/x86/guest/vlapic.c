@@ -1092,7 +1092,7 @@ vlapic_process_init_sipi(struct acrn_vcpu* target_vcpu, uint32_t mode, uint32_t 
 			if (target_vcpu->state != VCPU_INIT) {
 				/* put target vcpu to INIT state and wait for SIPI */
 				zombie_vcpu(target_vcpu, VCPU_ZOMBIE);
-				reset_vcpu(target_vcpu, INIT_RESET);
+				reset_vcpu(target_vcpu, VCPU_INIT_RESET);
 			}
 			/* new cpu model only need one SIPI to kick AP run,
 			 * the second SIPI will be ignored as it move out of
@@ -1551,7 +1551,7 @@ static int32_t vlapic_write(struct acrn_vlapic *vlapic, uint32_t offset, uint64_
  * @pre vlapic != NULL && ops != NULL
  */
 void
-vlapic_reset(struct acrn_vlapic *vlapic, const struct acrn_apicv_ops *ops, enum reset_mode mode)
+vlapic_reset(struct acrn_vlapic *vlapic, const struct acrn_apicv_ops *ops, enum vlapic_reset_mode mode)
 {
 	struct lapic_regs *lapic;
 	uint64_t preserved_lapic_mode = vlapic->msr_apicbase & APICBASE_LAPIC_MODE;
@@ -1562,9 +1562,9 @@ vlapic_reset(struct acrn_vlapic *vlapic, const struct acrn_apicv_ops *ops, enum 
 	if (vlapic2vcpu(vlapic)->vcpu_id == BSP_CPU_ID) {
 		vlapic->msr_apicbase |= APICBASE_BSP;
 	}
-	if (mode == INIT_RESET) {
+	if (mode == VLAPIC_INIT_RESET) {
 		if ((preserved_lapic_mode & APICBASE_ENABLED) != 0U ) {
-			/* Per SDM 10.12.5.1 vol.3, need to preserve lapic mode after INIT */
+			/* Per SDM 11.12.5.1 vol.3, need to preserve lapic mode after INIT */
 			vlapic->msr_apicbase |= preserved_lapic_mode;
 		}
 	} else {
@@ -1575,7 +1575,7 @@ vlapic_reset(struct acrn_vlapic *vlapic, const struct acrn_apicv_ops *ops, enum 
 	lapic = &(vlapic->apic_page);
 	(void)memset((void *)lapic, 0U, sizeof(struct lapic_regs));
 
-	if (mode == INIT_RESET) {
+	if (mode == VLAPIC_INIT_RESET) {
 		if ((preserved_lapic_mode & APICBASE_ENABLED) != 0U ) {
 			/* the local APIC ID register should be preserved in XAPIC or X2APIC mode */
 			lapic->id.v = preserved_apic_id;
@@ -1699,7 +1699,7 @@ int32_t vlapic_set_apicbase(struct acrn_vlapic *vlapic, uint64_t new)
 
 				if (is_lapic_pt_configured(vcpu->vm)) {
 					/* vlapic need to be reset to make sure it is in correct state */
-					vlapic_reset(vlapic, &ptapic_ops, SOFTWARE_RESET);
+					vlapic_reset(vlapic, &ptapic_ops, VLAPIC_POWER_UP);
 					vcpu->arch.lapic_pt_enabled = true;
 				}
 				vlapic->msr_apicbase = new;

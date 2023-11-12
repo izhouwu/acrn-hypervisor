@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include "acrn_common.h"
 #include <types.h>
 #include <errno.h>
 #include <asm/guest/vcpu.h>
@@ -236,10 +237,11 @@ void load_iwkey(struct acrn_vcpu *vcpu)
 }
 
 /* As a vcpu reset internal API, DO NOT touch any vcpu state transition in this function. */
-static void vcpu_reset_internal(struct acrn_vcpu *vcpu, enum reset_mode mode)
+static void vcpu_reset_internal(struct acrn_vcpu *vcpu, enum vcpu_reset_mode mode)
 {
 	int32_t i;
 	struct acrn_vlapic *vlapic;
+	enum vlapic_reset_mode lapic_mode;
 
 	vcpu->launched = false;
 	vcpu->arch.nr_sipi = 0U;
@@ -257,7 +259,12 @@ static void vcpu_reset_internal(struct acrn_vcpu *vcpu, enum reset_mode mode)
 	}
 
 	vlapic = vcpu_vlapic(vcpu);
-	vlapic_reset(vlapic, apicv_ops, mode);
+	lapic_mode = reset_mode_vcpu2vlapic(mode);
+	if (lapic_mode == VLAPIC_RESET_INVALID) {
+		pr_err("lapic reset, unsupported vcpu mode: %d", mode);
+		lapic_mode = VLAPIC_POWER_UP;
+	}
+	vlapic_reset(vlapic, apicv_ops, lapic_mode);
 
 	reset_vcpu_regs(vcpu, mode);
 
@@ -455,7 +462,7 @@ bool sanitize_cr0_cr4_pattern(void)
 	return ret;
 }
 
-void reset_vcpu_regs(struct acrn_vcpu *vcpu, enum reset_mode mode)
+void reset_vcpu_regs(struct acrn_vcpu *vcpu, enum vcpu_reset_mode mode)
 {
 	set_vcpu_regs(vcpu, &realmode_init_vregs);
 
@@ -469,7 +476,7 @@ void reset_vcpu_regs(struct acrn_vcpu *vcpu, enum reset_mode mode)
 	 *    set_vcpu_regs above.
 	 *  - Otherwise, handle it below.
 	 */
-	if (mode != INIT_RESET) {
+	if (mode != VCPU_INIT_RESET) {
 		struct ext_context *ectx = &(vcpu->arch.contexts[vcpu->arch.cur_context].ext_ctx);
 
 		/* IA32_TSC_AUX: 0 following Power-up/Reset, unchanged following INIT */
@@ -625,7 +632,7 @@ int32_t create_vcpu(uint16_t pcpu_id, struct acrn_vm *vm, struct acrn_vcpu **rtn
 		vcpu_set_state(vcpu, VCPU_INIT);
 
 		init_xsave(vcpu);
-		vcpu_reset_internal(vcpu, POWER_ON_RESET);
+		vcpu_reset_internal(vcpu, VCPU_POWER_UP);
 		(void)memset((void *)&vcpu->req, 0U, sizeof(struct io_request));
 		vm->hw.created_vcpus++;
 		ret = 0;
@@ -857,7 +864,7 @@ static uint64_t build_stack_frame(struct acrn_vcpu *vcpu)
  * @pre vcpu != NULL
  * @pre vcpu->state == VCPU_ZOMBIE
  */
-void reset_vcpu(struct acrn_vcpu *vcpu, enum reset_mode mode)
+void reset_vcpu(struct acrn_vcpu *vcpu, enum vcpu_reset_mode mode)
 {
 	pr_dbg("vcpu%hu reset", vcpu->vcpu_id);
 
