@@ -101,6 +101,7 @@ struct vm_mem_region {
 	int fd;
 };
 
+bool	acrn_has_cap(uint64_t cap);
 bool	vm_get_mem_region(struct vmctx *ctx, vm_paddr_t gpa,
 			struct vm_mmap_mem_region *ret_region);
 bool	vm_find_memfd_region(struct vmctx *ctx, vm_paddr_t gpa,
@@ -114,6 +115,7 @@ bool    vm_allow_dmabuf(struct vmctx *ctx);
 struct	vmctx *vm_create(const char *name, uint64_t req_buf, int* vcpu_num);
 void	vm_pause(struct vmctx *ctx);
 void	vm_reset(struct vmctx *ctx);
+void	vm_reset2(struct vmctx *ctx, struct acrn_vm_reset_state *reset);
 int	vm_create_ioreq_client(struct vmctx *ctx);
 int	vm_destroy_ioreq_client(struct vmctx *ctx);
 int	vm_attach_ioreq_client(struct vmctx *ctx);
@@ -162,6 +164,7 @@ int	vm_remove_hv_vdev(struct vmctx *ctx, struct acrn_vdev *dev);
 int	acrn_parse_cpu_affinity(char *arg);
 uint64_t vm_get_cpu_affinity_dm(void);
 int	vm_set_vcpu_regs(struct vmctx *ctx, struct acrn_vcpu_regs *cpu_regs);
+int	vm_set_one_reg(struct vmctx *ctx, int vcpu, enum cpu_reg_name cpu_reg, union acrn_reg val);
 
 int	vm_get_cpu_state(struct vmctx *ctx, void *state_buf);
 int	vm_intr_monitor(struct vmctx *ctx, void *intr_buf);

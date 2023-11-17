@@ -40,6 +40,7 @@
 #include <sys/stat.h>
 
 
+#include "acrn_common.h"
 #include "vmmapi.h"
 #include "mevent.h"
 #include "errno.h"
@@ -80,6 +81,53 @@ const char *vm_state_to_str(enum vm_suspend_how idx)
 }
 
 static int devfd = -1;
+
+static struct acrn_capability {
+	bool got;
+	/* 64 bit is enough now */
+	uint64_t bitmap[1];
+} acrn_cap = {
+	.got = false,
+	.bitmap[0] = 0,
+};
+
+bool acrn_has_cap(uint64_t cap)
+{
+	if (!acrn_cap.got && (cap >= ACRN_CAP_MAX)) {
+		return false;
+	}
+
+	/* modify if there are extended capabilities */
+	if (bitmap_test(cap, &acrn_cap.bitmap[0])) {
+		return true;
+	}
+
+	return false;
+}
+
+static void acrn_get_capabilities()
+{
+	struct acrn_cap_bitmap cap;
+
+	if (acrn_cap.got) {
+		return;
+	}
+
+	acrn_cap.got = true;
+	cap.index = 0;
+	cap.bitmap= 0;
+
+	if (devfd == -1) {
+		pr_err("acrn fd is not open\n");
+	} else if (ioctl(devfd, ACRN_IOCTL_GET_CAPS, &cap)) {
+		pr_err("ACRN_IOCTL_GET_CAPS ioctl() returned an error: %s\n", errormsg(errno));
+	} else {
+		acrn_cap.bitmap[0] = cap.bitmap;
+		return;
+	}
+	acrn_cap.bitmap[0] = 0;
+}
+
 static uint64_t cpu_affinity_bitmap = 0UL;
 
 static void add_one_pcpu(int pcpu_id)
@@ -175,6 +223,8 @@ vm_create(const char *name, uint64_t req_buf, int *vcpu_num)
 	ctx->highmem_gpa_base = HIGHRAM_START_ADDR;
 	ctx->name = (char *)(ctx + 1);
 	strncpy(ctx->name, name, strnlen(name, PATH_MAX) + 1);
+
+	acrn_get_capabilities();
 
 	/* Set trusty enable flag */
 	if (trusty_enabled)
@@ -480,6 +530,33 @@ vm_reset(struct vmctx *ctx)
 	if (ioctl(ctx->fd, ACRN_IOCTL_RESET_VM, &ctx->vmid)) {
 		pr_err("ACRN_IOCTL_RESET_VM ioctl() returned an error: %s\n", errormsg(errno));
 	}
+}
+
+void
+vm_reset2(struct vmctx *ctx, struct acrn_vm_reset_state *reset)
+{
+	if (ioctl(ctx->fd, ACRN_IOCTL_RESET_VM_V2, &ctx->vmid, reset)) {
+		pr_err("ACRN_IOCTL_RESET_VM2 ioctl() returned an error: %s\n", errormsg(errno));
+	}
+}
+
+int
+vm_set_one_reg(struct vmctx *ctx, int vcpu, enum cpu_reg_name cpu_reg, union acrn_reg val)
+{
+	int ret = -EINVAL;
+
+	if ((CPU_REG_RAX <= cpu_reg) && (cpu_reg < CPU_REG_LAST)) {
+		struct acrn_one_reg reg;
+		reg.vcpu_id = vcpu;
+		reg.reg = (uint32_t)cpu_reg;
+		reg.value = val;
+		ret = ioctl(ctx->fd, ACRN_IOCTL_SET_ONE_REG, &reg);
+		if (ret) {
+			pr_err("ACRN_IOCTL_SET_ONE_REG ioctl() returned an error: %s\n", errormsg(errno));
+		}
+	}
+
+	return ret;
 }
 
 void

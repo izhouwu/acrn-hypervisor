@@ -738,6 +738,16 @@ vm_system_reset(struct vmctx *ctx)
 static void
 vm_suspend_resume(struct vmctx *ctx)
 {
+	uint32_t *guest_wakeup_vec32;
+
+	guest_wakeup_vec32 = paddr_guest2host(ctx,
+					      get_acpi_wakingvector_offset(),
+					      get_acpi_wakingvector_length());
+	if (!guest_wakeup_vec32) {
+		pr_err("%s: failed to get waking_vector\n", __func__);
+		return;
+	}
+
 	/*
 	 * If we get warm reboot request, we don't want to exit the
 	 * vcpu_loop/vm_loop/mevent_loop. So we do:
@@ -756,10 +766,33 @@ vm_suspend_resume(struct vmctx *ctx)
 
 	pm_backto_wakeup(ctx);
 	vm_reset_watchdog(ctx);
-	vm_reset(ctx);
 
-	/* set the BSP init state */
-	vm_set_vcpu_regs(ctx, &ctx->bsp_regs);
+	if (acrn_has_cap(ACRN_CAP_RESET_VM_V2)) {
+		struct acrn_vm_reset_state reset = {};
+
+		reset.reset_mode = (uint32_t)VM_RESUME_FROM_S3;
+		vm_reset2(ctx, &reset);
+	} else {
+		vm_reset(ctx);
+	}
+
+	if (acrn_has_cap(ACRN_CAP_SET_REG)) {
+		union acrn_reg reg;
+
+		/* set the BSP waking vector */
+		reg.seg_sel.selector = (uint16_t)((*guest_wakeup_vec32 >> 4U) & 0xFFFFU);
+		reg.seg_sel.base = reg.seg_sel.selector << 4U;
+		/* real mode code segment */
+		reg.seg_sel.attr = 0x009FU;
+		reg.seg_sel.limit = 0xFFFFU;
+		vm_set_one_reg(ctx, BSP, CPU_REG_CS, reg);
+		reg.qval = 0;
+		vm_set_one_reg(ctx, BSP, CPU_REG_RIP, reg);
+	} else {
+		/* set the BSP init state */
+		vm_set_vcpu_regs(ctx, &ctx->bsp_regs);
+	}
+
 	vm_run(ctx);
 }
 

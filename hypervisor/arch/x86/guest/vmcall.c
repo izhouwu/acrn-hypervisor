@@ -46,10 +46,16 @@ static const struct hc_dispatch hc_dispatch_table[] = {
 		.handler = hcall_start_vm},
 	[HC_IDX(HC_RESET_VM)] = {
 		.handler = hcall_reset_vm},
+	[HC_IDX(HC_RESET_VM_V2)] = {
+		.handler = hcall_reset_vm_v2},
 	[HC_IDX(HC_PAUSE_VM)] = {
 		.handler = hcall_pause_vm},
 	[HC_IDX(HC_SET_VCPU_REGS)] = {
 		.handler = hcall_set_vcpu_regs},
+	[HC_IDX(HC_GET_CAPS)] = {
+		.handler = hcall_get_caps},
+	[HC_IDX(HC_SET_ONE_REG)] = {
+		.handler = hcall_set_one_reg},
 	[HC_IDX(HC_CREATE_VCPU)] = {
 		.handler = hcall_create_vcpu},
 	[HC_IDX(HC_SET_IRQLINE)] = {
@@ -185,6 +191,7 @@ struct acrn_vm *parse_target_vm(struct acrn_vm *service_vm, uint64_t hcall_id, u
 	case HC_GET_API_VERSION:
 	case HC_SERVICE_VM_OFFLINE_CPU:
 	case HC_SET_CALLBACK_VECTOR:
+	case HC_GET_CAPS:
 	case HC_SETUP_HV_NPK_LOG:
 	case HC_PROFILING_OPS:
 	case HC_GET_HW_INFO:

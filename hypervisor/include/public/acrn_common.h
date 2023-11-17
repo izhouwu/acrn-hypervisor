@@ -48,28 +48,29 @@ enum vlapic_reset_mode {
 	VLAPIC_RESET_INVALID = VLAPIC_RESET_MAX,
 };
 
-static const enum vcpu_reset_mode vm2vcpu[VM_RESET_MAX] = {
-	[VM_POWER_ON_RESET]	= VCPU_POWER_UP,
-	[VM_COLD_RESET]		= VCPU_COLD_RESET,
-	[VM_WARM_RESET]		= VCPU_WARM_RESET,
-	[VM_RESUME_FROM_S3]	= VCPU_COLD_RESET,
-};
-
 static inline enum vcpu_reset_mode reset_mode_vm2vcpu(enum vm_reset_mode mode)
 {
-	return (VM_POWER_ON_RESET <= mode && mode < VM_RESET_MAX) ?
+	const enum vcpu_reset_mode vm2vcpu[VM_RESET_MAX] = {
+		[VM_POWER_ON_RESET]	= VCPU_POWER_UP,
+		[VM_COLD_RESET]		= VCPU_COLD_RESET,
+		[VM_WARM_RESET]		= VCPU_WARM_RESET,
+		[VM_RESUME_FROM_S3]	= VCPU_COLD_RESET,
+	};
+
+	return ((VM_POWER_ON_RESET <= mode) && (mode < VM_RESET_MAX)) ?
 		vm2vcpu[mode] : VCPU_RESET_INVALID;
 }
 
-static const enum vlapic_reset_mode vcpu2vlapci[VCPU_RESET_MAX] = {
-	[VCPU_POWER_UP]		= VLAPIC_POWER_UP,
-	[VCPU_COLD_RESET]	= VLAPIC_POWER_UP,
-	[VCPU_WARM_RESET]	= VLAPIC_POWER_UP,
-	[VCPU_INIT_RESET]	= VLAPIC_INIT_RESET,
-};
 static inline enum vlapic_reset_mode reset_mode_vcpu2vlapic(enum vcpu_reset_mode mode)
 {
-	return (VCPU_POWER_UP <= mode && mode < VCPU_RESET_MAX) ?
+	const enum vlapic_reset_mode vcpu2vlapci[VCPU_RESET_MAX] = {
+		[VCPU_POWER_UP]		= VLAPIC_POWER_UP,
+		[VCPU_COLD_RESET]	= VLAPIC_POWER_UP,
+		[VCPU_WARM_RESET]	= VLAPIC_POWER_UP,
+		[VCPU_INIT_RESET]	= VLAPIC_INIT_RESET,
+	};
+
+	return ((VCPU_POWER_UP <= mode) && (mode < VCPU_RESET_MAX)) ?
 		vcpu2vlapci[mode] : VLAPIC_RESET_INVALID;
 }
 
@@ -438,6 +439,65 @@ struct acrn_vm_creation {
 	uint64_t cpu_affinity;
 };
 
+/**
+ *
+ * Identifiers for architecturally defined registers.
+ *
+ * These register names is used in condition statement.
+ * Within the following groups,register name need to be
+ * kept in order:
+ * General register names group (CPU_REG_RAX~CPU_REG_R15);
+ * Non general register names group (CPU_REG_CR0~CPU_REG_GDTR);
+ * Segement register names group (CPU_REG_ES~CPU_REG_GS).
+ */
+enum cpu_reg_name {
+	/* General purpose register layout should align with
+	 * struct acrn_gp_regs
+	 */
+	CPU_REG_RAX,
+	CPU_REG_RCX,
+	CPU_REG_RDX,
+	CPU_REG_RBX,
+	CPU_REG_RSP,
+	CPU_REG_RBP,
+	CPU_REG_RSI,
+	CPU_REG_RDI,
+	CPU_REG_R8,
+	CPU_REG_R9,
+	CPU_REG_R10,
+	CPU_REG_R11,
+	CPU_REG_R12,
+	CPU_REG_R13,
+	CPU_REG_R14,
+	CPU_REG_R15,
+
+	CPU_REG_CR0,
+	CPU_REG_CR2,
+	CPU_REG_CR3,
+	CPU_REG_CR4,
+	CPU_REG_DR7,
+	CPU_REG_RIP,
+	CPU_REG_RFLAGS,
+	/*CPU_REG_NATURAL_LAST*/
+	CPU_REG_EFER,
+	CPU_REG_PDPTE0,
+	CPU_REG_PDPTE1,
+	CPU_REG_PDPTE2,
+	CPU_REG_PDPTE3,
+	/*CPU_REG_64BIT_LAST,*/
+	CPU_REG_ES,
+	CPU_REG_CS,
+	CPU_REG_SS,
+	CPU_REG_DS,
+	CPU_REG_FS,
+	CPU_REG_GS,
+	CPU_REG_LDTR,
+	CPU_REG_TR,
+	CPU_REG_IDTR,
+	CPU_REG_GDTR,
+	CPU_REG_LAST
+};
+
 /* General-purpose register layout aligned with the general-purpose register idx
  * when vmexit, such as vmexit due to CR access, refer to SMD Vol.3C 27-6.
  */
@@ -469,6 +529,13 @@ struct acrn_descriptor_ptr {
 	uint64_t base;
 	uint16_t reserved[3];   /* align struct size to 64bit */
 } __packed;
+
+struct segment_sel {
+	uint16_t selector;
+	uint64_t base;
+	uint32_t limit;
+	uint32_t attr;
+};
 
 /**
  * @brief registers info for vcpu.
@@ -516,6 +583,22 @@ struct acrn_vcpu_regs {
 
 	/** the structure to hold vcpu state */
 	struct acrn_regs vcpu_regs;
+};
+
+union acrn_reg {
+	uint16_t wval;
+	uint32_t dval;
+	uint64_t qval;
+	/** for GDTR and IDTR */
+	struct acrn_descriptor_ptr dpt;
+	struct segment_sel seg_sel;
+};
+
+struct acrn_one_reg {
+	/** the virtual CPU ID for the VCPU */
+	uint16_t vcpu_id;
+	uint32_t reg;
+	union acrn_reg value;
 };
 
 /** Operation types for setting IRQ line */
@@ -688,6 +771,16 @@ struct acrn_vm_config_header {
         * vm_config_entry_size determines the real size of this structure.
         */
 } __aligned(8);
+
+struct acrn_vm_reset_state {
+	uint32_t reset_mode;
+	uint32_t reserved[7];
+};
+
+struct acrn_cap_bitmap {
+	uint32_t index;
+	uint64_t bitmap;
+};
 
 /**
  * @brief Info to configure virtual root port

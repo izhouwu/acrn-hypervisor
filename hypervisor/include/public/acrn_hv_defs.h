@@ -29,6 +29,7 @@
 #define HC_GET_API_VERSION          BASE_HC_ID(HC_ID, HC_ID_GEN_BASE + 0x00UL)
 #define HC_SERVICE_VM_OFFLINE_CPU   BASE_HC_ID(HC_ID, HC_ID_GEN_BASE + 0x01UL)
 #define HC_SET_CALLBACK_VECTOR      BASE_HC_ID(HC_ID, HC_ID_GEN_BASE + 0x02UL)
+#define HC_GET_CAPS                 BASE_HC_ID(HC_ID, HC_ID_GEN_BASE + 0x03UL)
 
 /* VM management */
 #define HC_ID_VM_BASE               0x10UL
@@ -39,6 +40,8 @@
 #define HC_CREATE_VCPU              BASE_HC_ID(HC_ID, HC_ID_VM_BASE + 0x04UL)
 #define HC_RESET_VM                 BASE_HC_ID(HC_ID, HC_ID_VM_BASE + 0x05UL)
 #define HC_SET_VCPU_REGS            BASE_HC_ID(HC_ID, HC_ID_VM_BASE + 0x06UL)
+#define HC_RESET_VM_V2              BASE_HC_ID(HC_ID, HC_ID_VM_BASE + 0x07UL)
+#define HC_SET_ONE_REG              BASE_HC_ID(HC_ID, HC_ID_VM_BASE + 0x08UL)
 
 /* IRQ and Interrupts */
 #define HC_ID_IRQ_BASE              0x20UL
@@ -112,6 +115,12 @@
 #define	MEM_TYPE_WC                     0x00000200U
 #define	MEM_TYPE_WP                     0x00000400U
 #define MEM_TYPE_MASK                   0x000007C0U
+
+/*
+ * Extension capability list.
+ */
+#define ACRN_CAP_RESET_VM_V2	0
+#define ACRN_CAP_SET_REG	1
 
 /**
  * @brief Hypercall

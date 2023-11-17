@@ -103,6 +103,7 @@ int32_t hcall_destroy_vm(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint
  * @return 0 on success, non-zero on error.
  */
 int32_t hcall_reset_vm(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint64_t param1, uint64_t param2);
+int32_t hcall_reset_vm_v2(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint64_t param1, uint64_t param2);
 
 /**
  * @brief start virtual machine
@@ -152,6 +153,8 @@ int32_t hcall_pause_vm(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint64
  * @return 0 on success, non-zero on error.
  */
 int32_t hcall_set_vcpu_regs(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint64_t param1, uint64_t param2);
+int32_t hcall_get_caps(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint64_t param1, uint64_t param2);
+int32_t hcall_set_one_reg(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm, uint64_t param1, uint64_t param2);
 
 /**
  * @brief set or clear IRQ line

@@ -261,7 +261,7 @@ static void vcpu_reset_internal(struct acrn_vcpu *vcpu, enum vcpu_reset_mode mod
 	vlapic = vcpu_vlapic(vcpu);
 	lapic_mode = reset_mode_vcpu2vlapic(mode);
 	if (lapic_mode == VLAPIC_RESET_INVALID) {
-		pr_err("lapic reset, unsupported vcpu mode: %d", mode);
+		pr_err("unsupported vcpu mode: %d, power-up reset the vlapic\n", mode);
 		lapic_mode = VLAPIC_POWER_UP;
 	}
 	vlapic_reset(vlapic, apicv_ops, lapic_mode);
@@ -410,6 +410,92 @@ void set_vcpu_regs(struct acrn_vcpu *vcpu, struct acrn_regs *vcpu_regs)
 
 	set_vcpu_mode(vcpu, vcpu_regs->cs_ar, vcpu_regs->ia32_efer,
 			vcpu_regs->cr0);
+}
+
+int set_vcpu_reg(struct acrn_vcpu *vcpu, const struct acrn_one_reg *reg)
+{
+	enum cpu_reg_name reg_name = (enum cpu_reg_name)reg->reg;
+	union acrn_reg val = reg->value;
+	int ret = 0;
+	struct ext_context *ectx;
+	struct run_context *ctx;
+
+	ectx = &(vcpu->arch.contexts[vcpu->arch.cur_context].ext_ctx);
+	ctx = &(vcpu->arch.contexts[vcpu->arch.cur_context].run_ctx);
+
+	switch(reg_name) {
+	case CPU_REG_RAX ... CPU_REG_R15:
+		vcpu_set_gpreg(vcpu, reg_name, val.qval);
+		if (reg_name == CPU_REG_RSP) {
+			vcpu_set_rsp(vcpu, val.qval);
+		}
+		break;
+	case CPU_REG_CR0:
+		ctx->cr0 = val.qval;
+		break;
+	case CPU_REG_CR3:
+		ectx->cr3 = val.qval;
+		break;
+	case CPU_REG_CR4:
+		ctx->cr4 = val.qval;
+		break;
+	case CPU_REG_RIP:
+		vcpu_set_rip(vcpu, val.qval);
+		break;
+	case CPU_REG_RFLAGS:
+		if (val.qval == 0UL) {
+			vcpu_set_rflags(vcpu, 0x02UL);
+		} else {
+			vcpu_set_rflags(vcpu, val.qval & ~(0x8d5UL));
+		}
+		break;
+	case CPU_REG_EFER:
+		vcpu_set_efer(vcpu, val.qval);
+		break;
+	case CPU_REG_ES:
+		ectx->es = val.seg_sel;
+		break;
+	case CPU_REG_CS:
+		ectx->cs = val.seg_sel;
+		break;
+	case CPU_REG_SS:
+		ectx->ss = val.seg_sel;
+		break;
+	case CPU_REG_DS:
+		ectx->ds = val.seg_sel;
+		break;
+	case CPU_REG_FS:
+		ectx->fs = val.seg_sel;
+		break;
+	case CPU_REG_GS:
+		ectx->gs = val.seg_sel;
+		break;
+	case CPU_REG_LDTR:
+		ectx->ldtr = val.seg_sel;
+		break;
+	case CPU_REG_TR:
+		ectx->tr = val.seg_sel;
+		break;
+	case CPU_REG_IDTR:
+		ectx->idtr.base = val.dpt.base;
+		ectx->idtr.limit = val.dpt.limit;
+		break;
+	case CPU_REG_GDTR:
+		ectx->gdtr.base = val.dpt.base;
+		ectx->gdtr.limit = val.dpt.limit;
+		break;
+	/* TODO: handle registers access */
+	case CPU_REG_CR2:
+	case CPU_REG_DR7:
+	case CPU_REG_PDPTE0:
+	case CPU_REG_PDPTE1:
+	case CPU_REG_PDPTE2:
+	case CPU_REG_PDPTE3:
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
 }
 
 static struct acrn_regs realmode_init_vregs = {

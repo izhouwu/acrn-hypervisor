@@ -353,6 +353,25 @@ int32_t hcall_reset_vm(__unused struct acrn_vcpu *vcpu, struct acrn_vm *target_v
 	return ret;
 }
 
+int32_t hcall_reset_vm_v2(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm,
+			  __unused uint64_t param1, uint64_t param2)
+{
+	int32_t ret = -EINVAL;
+
+	if (is_paused_vm(target_vm)) {
+		struct acrn_vm *vm = vcpu->vm;
+		struct acrn_vm_reset_state reset;
+
+		if (copy_from_gpa(vm, &reset, param2, sizeof(reset)) == 0) {
+			enum vm_reset_mode mode = (enum vm_reset_mode)reset.reset_mode;
+			if ((VM_POWER_ON_RESET <= mode) && (mode < VM_RESET_MAX)) {
+				ret = reset_vm(target_vm, mode);
+			}
+		}
+	}
+	return ret;
+}
+
 /**
  * @brief set vcpu regs
  *
@@ -392,6 +411,52 @@ int32_t hcall_set_vcpu_regs(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm,
 		}
 	}
 
+	return ret;
+}
+
+int32_t hcall_get_caps(__unused struct acrn_vcpu *vcpu,
+		       __unused struct acrn_vm *target_vm, uint64_t param1,
+		       __unused uint64_t param2)
+{
+	int ret = -EINVAL;
+	struct acrn_vm *vm = vcpu->vm;
+	struct acrn_cap_bitmap cap;
+
+	if (copy_from_gpa(vm, &cap, param1, sizeof(cap)) == 0) {
+		if (cap.index == 0) {
+			cap.bitmap = (1U << ACRN_CAP_RESET_VM_V2) | (1U << ACRN_CAP_SET_REG);
+		} else {
+			cap.bitmap = 0;
+		}
+		ret = copy_to_gpa(vm, &cap, param1, sizeof(cap));
+	}
+
+	return ret;
+}
+
+int32_t hcall_set_one_reg(__unused struct acrn_vcpu *vcpu,
+			  struct acrn_vm *target_vm, __unused uint64_t param1,
+			  uint64_t param2)
+{
+	int ret = -EINVAL;
+
+	/* Only allow setup reg while target_vm is inactive */
+	if ((!is_poweroff_vm(target_vm)) && (param2 != 0U) && (target_vm->state != VM_RUNNING)) {
+		struct acrn_vm *vm = vcpu->vm;
+		struct acrn_one_reg reg;
+		if (copy_from_gpa(vm, &reg, param2, sizeof(reg)) != 0) {
+			/* translate parameter failed */
+		} else if (reg.vcpu_id >= MAX_VCPUS_PER_VM) {
+			pr_err("%s: invalid vcpu_id for set_one_reg\n", __func__);
+		} else {
+			struct acrn_vcpu *target_vcpu;
+			target_vcpu = vcpu_from_vid(target_vm, reg.vcpu_id);
+			if (target_vcpu->state != VCPU_OFFLINE) {
+				/* real writing will be delayed to init_vmcs */
+				ret = set_vcpu_reg(target_vcpu, &reg);
+			}
+		}
+	}
 	return ret;
 }
 

@@ -574,6 +574,7 @@ void vcpu_clear_eoi_exit_bitmap(struct acrn_vcpu *vcpu, uint32_t vector);
  * @return None
  */
 void set_vcpu_regs(struct acrn_vcpu *vcpu, struct acrn_regs *vcpu_regs);
+int set_vcpu_reg(struct acrn_vcpu *vcpu, const struct acrn_one_reg *reg);
 
 /**
  * @brief reset all the vcpu registers

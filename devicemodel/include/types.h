@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <sched.h>
+#include <stdbool.h>
 #include <sys/types.h>
 
 #define MAXCOMLEN   19      /* max command name remembered */
@@ -118,6 +119,21 @@ static inline void name(uint16_t nr_arg, volatile op_type *addr)	\
 			:  "cc", "memory");				\
 }
 build_bitmap_clear(bitmap_clear_nolock, "q", uint64_t, "")
+
+/*
+ * return !!((*addr) & (1UL<<nr));
+ * Note:Input parameter nr shall be less than 64. If nr>=64, it will
+ * be truncated.
+ */
+static inline bool bitmap_test(uint16_t nr, const volatile uint64_t *addr)
+{
+	int32_t ret = 0;
+	asm volatile("btq %q2,%1\n\tsbbl %0, %0"
+			: "=r" (ret)
+			: "m" (*addr), "r" ((uint64_t)(nr & 0x3fU))
+			: "cc", "memory");
+	return (ret != 0);
+}
 
 /*
  * ffs64 - Find the first (least significant) bit set of value
