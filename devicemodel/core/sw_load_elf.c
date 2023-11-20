@@ -68,6 +68,30 @@ static int multiboot_image = 0;
 #define	MULTIBOOT_INFO_BOOT_LOADER_NAME	(0x00000200U)
 #define	MULTIBOOT_INFO_BOOT_APM_TABLE	(0x00000400U)
 
+/* Multiboot memory map tab types */
+#define MULTIBOOT_MEMORY_AVAILABLE			1U
+#define MULTIBOOT_MEMORY_RESERVED			2U
+#define MULTIBOOT_MEMORY_ACPI_RECLAIMABLE		3U
+#define MULTIBOOT_MEMORY_NVS				4U
+#define MULTIBOOT_MEMORY_BADRAM				5U
+
+#define MULTIBOOT_HEADER_FLAG_MODULES_ON_4K		(1U << 0)
+#define MULTIBOOT_HEADER_FLAG_MEM_INFO_REQUIRED		(1U << 1)
+#define MULTIBOOT_HEADER_FLAG_VIDEO_MODE_TAB_REQUIRED	(1U << 2)
+#define MULTIBOOT_HEADER_FLAG_ADDR_FIELD_VALID		(1U << 16)
+
+/* Where we put multboot info to */
+#define MULTIBOOT_OFFSET		(0x20000)
+#define MB_CMD_LINE_OFFSET		(0x21000)
+#define MB_MMAP_TAB_OFFSET		(0x22000)
+
+struct multiboot_mmap {
+	uint32_t	size;
+	uint64_t	baseaddr;
+	uint64_t	length;
+	uint32_t	type;
+} __packed;
+
 struct multiboot_info {
 	uint32_t	flags;
 	uint32_t	mem_lower;
@@ -248,8 +272,28 @@ acrn_load_elf(struct vmctx *ctx, char *elf_file_name, unsigned long *entry,
 	return ret;
 }
 
-/* Where we put multboot info to */
-#define	MULTIBOOT_OFFSET	(0x20000)
+static uint32_t create_mb_mmap_tab(struct vmctx *ctx, uint32_t tab_offset)
+{
+	struct e820_entry e820[NUM_E820_ENTRIES];
+	struct multiboot_mmap *mb_mmap_tb = (struct multiboot_mmap *)(ctx->baseaddr + tab_offset);
+	uint32_t n_e820_entries, i;
+
+	n_e820_entries = acrn_create_e820_table(ctx, e820);
+
+	for (i = 0; i < n_e820_entries; i++) {
+		mb_mmap_tb->size = 20;
+		mb_mmap_tb->baseaddr = e820[i].baseaddr;
+		mb_mmap_tb->length = e820[i].length;
+		mb_mmap_tb->type = e820[i].type;
+		if (mb_mmap_tb->type > MULTIBOOT_MEMORY_BADRAM) {
+			mb_mmap_tb->type = MULTIBOOT_MEMORY_RESERVED;
+		}
+		mb_mmap_tb++;
+	}
+
+	return n_e820_entries;
+}
+
 static const uint64_t acrn_init_gdt[] = {
 	0x0UL,
 	0x00CF9B000000FFFFUL,	/* Linear Code */
@@ -296,23 +340,45 @@ acrn_sw_load_elf(struct vmctx *ctx)
 	ctx->bsp_regs.vcpu_regs.gprs.rax = MULTIBOOT_MACHINE_STATE_MAGIC;
 
 	if (multiboot_image == 1) {
+		char *cmd_offset = ctx->baseaddr + MB_CMD_LINE_OFFSET;
+		uint32_t n_entries;
+
 		mi = (struct multiboot_info *)(ctx->baseaddr + MULTIBOOT_OFFSET);
 		memset(mi, 0, sizeof(*mi));
 
-		if (multiboot_flags == (1 << 1)) {
-			/* Now, we only support elf binary request multiboot
-			 * info with memory info filled case.
-			 *
-			 * TODO:
-			 * For other elf image with multiboot enabled, they
-			 * may need more fileds initialized here. We will add
-			 * them here per each requirement.
-			 */
-			mi->flags = MULTIBOOT_INFO_MEMORY;
+		if (with_bootargs == 1) {
+			strncpy(cmd_offset, get_bootargs(), 0x1000 - 1);
+			mi->flags |= MULTIBOOT_INFO_CMDLINE;
+			mi->cmdline = MB_CMD_LINE_OFFSET;
+		}
+
+		if ((multiboot_flags & MULTIBOOT_HEADER_FLAG_MEM_INFO_REQUIRED) != 0) {
+			mi->flags |= (MULTIBOOT_INFO_MEMORY | MULTIBOOT_INFO_MEM_MAP);
 			mi->mem_lower = 0;
 			mi->mem_upper = GDT_LOAD_OFF(ctx) / 1024U;
+
+			n_entries = create_mb_mmap_tab(ctx, MB_MMAP_TAB_OFFSET);
+			mi->mmap_length = n_entries * sizeof(struct multiboot_mmap);
+			mi->mmap_addr = MB_MMAP_TAB_OFFSET;
+
 			ctx->bsp_regs.vcpu_regs.gprs.rbx = MULTIBOOT_OFFSET;
-		} else {
+		}
+		/* Multiboot header flags
+		 * Bit0 requires all boot modules loaded along with the operating system
+		 * must be aligned on page (4KB) boundaries. As we currently do not load
+		 * modules, this bit is ignored.
+		 *
+		 * Bit1 requires memory info, which is already provided.
+		 *
+		 * Bit16 indicates that addr fields are valid in the MB header. But for
+		 * ELF image, those fields are not needed according to MB spec. So this
+		 * bit is ignored.
+		 *
+		 * Other bits are not supported.
+		 */
+		if ((multiboot_flags & ~(MULTIBOOT_HEADER_FLAG_MEM_INFO_REQUIRED |
+				MULTIBOOT_HEADER_FLAG_MODULES_ON_4K |
+				MULTIBOOT_HEADER_FLAG_ADDR_FIELD_VALID)) != 0) {
 			pr_err("Invalid multiboot header in elf binary\n");
 			return -1;
 		}
