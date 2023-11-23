@@ -584,6 +584,13 @@ virtio_sound_recover(struct virtio_sound_pcm *stream)
 			WPRINTF("%s: recorver from xrun prepare fail, error number %d!\n", __func__, err);
 			return -1;
 		}
+		if (stream->dir == SND_PCM_STREAM_PLAYBACK) {
+			err = virtio_sound_xfer(stream);
+			if (err < 0) {
+				WPRINTF("%s: xfer error!\n", __func__);
+				return -1;
+			}
+		}
 		err = snd_pcm_start(stream->handle);
 		if(err < 0) {
 			WPRINTF("%s: recorver from xrun start fail, error number %d!\n", __func__, err);
@@ -601,6 +608,13 @@ virtio_sound_recover(struct virtio_sound_pcm *stream)
 			if(err < 0) {
 				WPRINTF("%s: recorver form suspend prepare fail, error number %d!\n", __func__, err);
 				return -1;
+			}
+			if (stream->dir == SND_PCM_STREAM_PLAYBACK) {
+				err = virtio_sound_xfer(stream);
+				if (err < 0) {
+					WPRINTF("%s: xfer error!\n", __func__);
+					return -1;
+				}
 			}
 			err = snd_pcm_start(stream->handle);
 			if(err < 0) {
