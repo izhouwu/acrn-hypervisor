@@ -758,7 +758,20 @@ virtio_sound_pcm_thread(void *param)
 	struct virtio_sound_pcm *stream = (struct virtio_sound_pcm*)param;
 	struct virtio_vq_info *ctl_vq = &virtio_sound_get_device()->vq[0];
 	int err;
+	struct timespec now, a_period;
 
+	/* If playback thread is scheduled before start PCM, it can receive
+	   the start irq and flush all buffered data. That will cause FE buffer
+	   recircle before hw printer updated. */
+	if (stream->dir == SND_PCM_STREAM_PLAYBACK) {
+		a_period.tv_sec = 0;
+		a_period.tv_nsec = 1000000000 / (stream->param.rrate / (stream->param.period_bytes
+			/ virtio_sound_get_frame_size(stream)));
+		if (clock_gettime(CLOCK_REALTIME, &now))
+			WPRINTF("%s: clock_gettime returned: %s", __func__, strerror(errno));
+		timespecadd(&now, &a_period);
+		sem_timedwait(&stream->sem, &now);
+	}
 	do {
 		if (stream->status == VIRTIO_SND_BE_STOP) {
 			sem_wait(&stream->sem);
