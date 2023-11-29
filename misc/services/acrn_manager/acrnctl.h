@@ -58,5 +58,7 @@ int pause_vm(const char *vmname);
 int continue_vm(const char *vmname);
 int resume_vm(const char *vmname, unsigned reason);
 int blkrescan_vm(const char *vmname, char *devargs);
+int add_pci_dev(const char *vmname, char *devargs);
+int del_pci_dev(const char *vmname, char *devargs);
 
 #endif				/* _ACRNCTL_H_ */

@@ -428,3 +428,43 @@ int blkrescan_vm(const char *vmname, char *devargs)
 
 	return ack.data.err;
 }
+
+int add_pci_dev(const char *vmname, char *devargs)
+{
+	struct mngr_msg req;
+	struct mngr_msg ack;
+
+	req.magic = MNGR_MSG_MAGIC;
+	req.msgid = DM_ADD_PCI;
+	req.timestamp = time(NULL);
+	strncpy(req.data.devargs, devargs, PARAM_LEN - 1);
+	req.data.devargs[PARAM_LEN - 1] = '\0';
+
+	send_msg(vmname, &req, &ack);
+
+	if (ack.data.err) {
+		printf("Unable to add the pci device to vm. errno(%d)\n", ack.data.err);
+	}
+
+	return ack.data.err;
+}
+
+int del_pci_dev(const char *vmname, char *devargs)
+{
+	struct mngr_msg req;
+	struct mngr_msg ack;
+
+	req.magic = MNGR_MSG_MAGIC;
+	req.msgid = DM_DEL_PCI;
+	req.timestamp = time(NULL);
+	strncpy(req.data.devargs, devargs, PARAM_LEN - 1);
+	req.data.devargs[PARAM_LEN - 1] = '\0';
+
+	send_msg(vmname, &req, &ack);
+
+	if (ack.data.err) {
+		printf("Unable to remove the pci device from vm. errno(%d)\n", ack.data.err);
+	}
+
+	return ack.data.err;
+}
