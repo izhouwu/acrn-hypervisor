@@ -36,6 +36,7 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#include "atomic.h"
 #include "dm.h"
 #include "vmmapi.h"
 #include "acpi.h"
@@ -80,6 +81,8 @@ struct businfo {
 	uint16_t iobase, iolimit;		/* I/O window */
 	uint32_t membase32, memlimit32;		/* mmio window below 4GB */
 	uint64_t membase64, memlimit64;		/* mmio window above 4GB */
+	uint32_t hp_slots, up_slots, down_slots;
+	uint16_t hp_vgsi;
 	struct slotinfo slotinfo[MAXSLOTS];
 };
 
@@ -108,6 +111,8 @@ static void pci_lintr_update(struct pci_vdev *dev);
 static void pci_cfgrw(struct vmctx *ctx, int vcpu, int in, int bus, int slot,
 		      int func, int coff, int bytes, uint32_t *val);
 static void pci_emul_free_msixcap(struct pci_vdev *pdi);
+static int acpiphp_init(struct vmctx *ctx);
+static int acpiphp_deinit(struct vmctx *ctx);
 
 int compare_io_rgns(const void *data1, const void *data2)
 {
@@ -335,6 +340,12 @@ pci_parse_slot(char *opt)
 	if (si->si_funcs[fnum].fi_name != NULL) {
 		pr_err("pci slot %d:%d already occupied!\n",
 			snum, fnum);
+		goto done;
+	}
+
+	if (strcmp("php-slot", emul) == 0) {
+		bi->hp_slots |= (1U << snum);
+		error = 0;
 		goto done;
 	}
 
@@ -1482,6 +1493,304 @@ pci_emul_ecfg_handler(struct vmctx *ctx, int vcpu, int dir, uint64_t addr,
 	return 0;
 }
 
+static int
+pci_enable_hotplug_slot(struct vmctx *ctx, uint8_t bus)
+{
+	struct businfo *bi = pci_businfo[bus];
+
+	if (bi->hp_slots) {
+		/* alloc vgsi for GED */
+		bi->hp_vgsi = ioapic_pci_alloc_irq(NULL);
+		vm_set_gsi_irq(ctx, bi->hp_vgsi, GSI_SET_HIGH);
+	}
+
+	return 0;
+}
+
+static uint8_t acpiphp_bus;
+
+static int
+port_pciu_handler(struct vmctx *ctx, int vcpu, int in, int port,
+		  int bytes, uint32_t *eax, void *arg)
+{
+	struct businfo *bi = pci_businfo[acpiphp_bus];
+
+	*eax = atomic_xchg(&bi->up_slots, 0);
+	pr_info("ACPIPHP: Read PCIU: 0x%x\n", *eax);
+
+	return 0;
+}
+
+static int
+port_pcid_handler(struct vmctx *ctx, int vcpu, int in, int port,
+		  int bytes, uint32_t *eax, void *arg)
+{
+	struct businfo *bi = pci_businfo[acpiphp_bus];
+	*eax = atomic_xchg(&bi->down_slots, 0);
+	pr_info("ACPIPHP: Read PCID: 0x%x\n", *eax);
+	return 0;
+}
+
+/* select the bus for later operation */
+static int
+port_bus_handler(struct vmctx *ctx, int vcpu, int in, int port,
+		  int bytes, uint32_t *eax, void *arg)
+{
+	if (in) {
+		*eax = acpiphp_bus;
+		return 0;
+	}
+
+	acpiphp_bus = *eax & 0xFF;
+	pr_info("ACPIPHP: Select PCI bus: 0x%02X", acpiphp_bus);
+	return 0;
+}
+
+/* guest writes slot number to eject the slot on previously selected bus */
+static int
+port_slot_handler(struct vmctx *ctx, int vcpu, int in, int port,
+		  int bytes, uint32_t *eax, void *arg)
+{
+	if (in) {
+		*eax = 0xff;
+		return 0;
+	}
+
+	uint8_t bus = acpiphp_bus;
+	uint8_t slot = ffs(*eax) - 1; 	/* only support eject one device at a time */
+	struct businfo *bi = pci_businfo[bus];
+	struct slotinfo *si = &bi->slotinfo[slot];
+	struct funcinfo *fi = &si->si_funcs[0];
+	struct pci_vdev_ops *ops;
+
+	pr_notice("ACPIPHP: Eject PCI slot %02x:%02x\n", bus, slot);
+
+	if (fi->fi_name == NULL) {
+		pr_warn("ACPIPHP: Device not present\n");
+		return 0;
+	}
+
+	ops = pci_emul_finddev(fi->fi_name);
+	if (!ops) {
+		pr_warn("No driver for device [%s]\n", fi->fi_name);
+	}
+	pr_notice("pci deinit %s\n", fi->fi_name);
+	pci_emul_deinit(ctx, ops, bus, slot, 0, fi);
+	memset(fi, 0, sizeof(struct funcinfo));
+	return 0;
+}
+
+static int
+acpiphp_init(struct vmctx *ctx)
+{
+	pci_enable_hotplug_slot(ctx, 0);
+
+	struct inout_port port_pciu, port_pcid, port_bus, port_slot;
+	int err = 0;;
+
+	memset(&port_pciu, 0, sizeof(struct inout_port));
+	port_pciu.name = "acpiphp";
+	port_pciu.port = 0x0E00; 	/* TODO */
+	port_pciu.size = 4;
+	port_pciu.flags = IOPORT_F_IN;
+	port_pciu.handler = port_pciu_handler;
+	if (register_inout(&port_pciu) != 0) {
+		err = -EINVAL;
+		goto fail;
+	}
+
+	memset(&port_pcid, 0, sizeof(struct inout_port));
+	port_pcid.name = "acpiphp";
+	port_pcid.port = 0x0E04; 	/* TODO */
+	port_pcid.size = 4;
+	port_pcid.flags = IOPORT_F_IN;
+	port_pcid.handler = port_pcid_handler;
+	if (register_inout(&port_pcid) != 0) {
+		err = -EINVAL;
+		goto fail;
+	}
+
+	memset(&port_bus, 0, sizeof(struct inout_port));
+	port_bus.name = "acpiphp";
+	port_bus.port = 0x0E08;
+	port_bus.size = 4;
+	port_bus.flags = IOPORT_F_INOUT;
+	port_bus.handler = port_bus_handler;
+	if (register_inout(&port_bus) != 0) {
+		err = -EINVAL;
+		goto fail;
+	}
+
+	memset(&port_slot, 0, sizeof(struct inout_port));
+	port_slot.name = "acpiphp";
+	port_slot.port = 0x0E0C;
+	port_slot.size = 4;
+	port_slot.flags = IOPORT_F_OUT;
+	port_slot.handler = port_slot_handler;
+	if (register_inout(&port_slot) != 0) {
+		err = -EINVAL;
+		goto fail;
+	}
+
+fail:
+	/* do unregistration TODO */
+	return err;
+}
+
+static int
+acpiphp_deinit(struct vmctx *ctx)
+{
+	return 0;
+}
+
+int pci_del_dev(struct vmctx *ctx, char *opt)
+{
+	struct businfo *bi;
+	struct slotinfo *si;
+	struct funcinfo *fi;
+	int bnum, snum, fnum;
+
+	if (parse_bdf(opt, &bnum, &snum, &fnum, 10) != 0) {
+		pr_err("%s: invalid parameter\n", __func__);
+		return -EINVAL;
+	}
+
+	bi = pci_businfo[bnum];
+	si = &bi->slotinfo[snum];
+	fi = &si->si_funcs[0]; 	/* only support 1 function in a slot */
+
+	if ((bi->hp_slots & (1U << snum)) == 0) {
+		pr_err("pci slot %d on bus %d is not a hotplug slot!\n", snum, bnum);
+		return -EINVAL;
+	}
+	if (fi->fi_name == NULL) {
+		pr_err("No devices on pci slot %d on bus %d!\n", snum, bnum);
+		return -EINVAL;
+	}
+
+	(void)atomic_or_fetch(&bi->down_slots, (1U << snum));
+
+	/* inject hotplug GED interrupt */
+	vm_set_gsi_irq(ctx, bi->hp_vgsi, GSI_FALLING_PULSE);
+
+	return 0;
+}
+
+int
+pci_add_dev(struct vmctx *ctx, char *opt)
+{
+	struct businfo *bi;
+	struct slotinfo *si;
+	struct funcinfo *fi;
+	char *emul, *config, *str, *cp = NULL;
+	int error, bnum, snum, fnum;
+	struct pci_vdev_ops *ops;
+
+	error = 0;
+	str = strdup(opt);
+	if (!str) {
+		pr_err("%s: strdup returns NULL\n", __func__);
+		return -ENOMEM;
+	}
+
+	emul = config = NULL;
+	cp = str;
+	str = strsep(&cp, ",");
+	if (cp) {
+		emul = strsep(&cp, ",");
+		/* ignore boot flag */
+		if (cp && *cp == 'b' && *(cp+1) == ',')
+			strsep(&cp, ",");
+		config = cp;
+	} else {
+		pci_parse_slot_usage(opt);
+		error = -EINVAL;
+		goto err_out;
+	}
+
+	if ((strcmp("pci-gvt", emul) == 0) || (strcmp("virtio-hdcp", emul) == 0)
+			|| (strcmp("npk", emul) == 0) || (strcmp("virtio-coreu", emul) == 0)) {
+		pr_warn("The \"%s\" parameter is obsolete and ignored\n", emul);
+		error = -EINVAL;
+		goto err_out;
+	}
+
+	/* <bus>:<slot>:<func> */
+	if (parse_bdf(str, &bnum, &snum, &fnum, 10) != 0)
+		snum = -1;
+
+	if (bnum < 0 || bnum >= MAXBUSES || snum < 0 || snum >= MAXSLOTS ||
+	    fnum < 0 || fnum >= MAXFUNCS) {
+		pci_parse_slot_usage(opt);
+		error = -EINVAL;
+		goto err_out;
+	}
+
+	bi = pci_businfo[bnum];
+	si = &bi->slotinfo[snum];
+	fi = &si->si_funcs[fnum];
+
+	if ((bi->hp_slots & (1U << snum)) == 0) {
+		pr_err("pci slot %d is not a hotplug slot!\n", snum);
+		error = -EINVAL;
+		goto err_out;
+	}
+	if (fi->fi_name != NULL) {
+		pr_err("pci slot %d already occupied!\n", snum);
+		error = -EEXIST;
+		goto err_out;
+	}
+
+	ops = pci_emul_finddev(emul);
+	if (ops == NULL) {
+		pr_err("pci slot %d:%d: unknown device \"%s\"\n", snum, fnum, emul);
+		error = -EINVAL;
+		goto err_out;
+	}
+
+	fi->fi_name = emul;
+	/* saved fi param in case reboot */
+	fi->fi_param_saved = config;
+
+	if (strcmp("virtio-net", emul) == 0) {
+		fi->fi_param_saved = cp;
+	}
+
+	pr_notice("pci init %s\r\n at %02x:%02x.%01x", fi->fi_name, bnum, snum, fnum);
+
+	error = pci_emul_init(ctx, ops, bnum, snum, fnum, fi);
+	if (error) {
+		pr_err("pci %s init failed\n", fi->fi_name);
+		goto pci_emul_init_fail;
+	}
+
+	error = check_gsi_sharing_violation();
+	if (error) {
+		goto pci_emul_init_fail;
+	}
+
+	pci_lintr_route(fi->fi_devi);
+	ops = fi->fi_devi->dev_ops;
+	if (ops && ops->vdev_phys_access)
+		ops->vdev_phys_access(ctx, fi->fi_devi);
+
+	(void)atomic_or_fetch(&bi->up_slots, (1U << snum));
+
+	/* inject hotplug GED interrupt */
+	vm_set_gsi_irq(ctx, bi->hp_vgsi, GSI_FALLING_PULSE);
+
+	return 0;
+
+pci_emul_init_fail:
+	memset(fi, 0, sizeof(struct funcinfo));
+err_out:
+	if (error)
+		free(str);
+
+	return error;
+}
+
+
 #define	BUSIO_ROUNDUP		32
 #define	BUSMEM_ROUNDUP		(1024 * 1024)
 
@@ -1497,6 +1806,10 @@ init_pci(struct vmctx *ctx)
 	int success_cnt[2] = {0};	/* 0 for passthru and 1 for others */
 	int error;
 	uint64_t bus0_memlimit;
+
+	error = acpiphp_init(ctx);
+	if (error)
+		return error;
 
 	pci_emul_iobase = PCI_EMUL_IOBASE;
 	pci_emul_membase32 = vm_get_lowmem_limit(ctx);
@@ -1715,6 +2028,8 @@ pci_emul_init_fail:
 		}
 	}
 
+	acpiphp_deinit(ctx);
+
 	return error;
 }
 
@@ -1885,12 +2200,12 @@ pci_bus_write_dsdt(int bus)
 	dsdt_line("      WordIO (ResourceProducer, MinFixed, MaxFixed, "
 	    "PosDecode, EntireRange,");
 	dsdt_line("        0x0000,             // Granularity");
-	dsdt_line("        0x%04X,             // Range Minimum", bi->iobase);
+	dsdt_line("        0x%04X,             // Range Minimum", PCI_EMUL_IOBASE);
 	dsdt_line("        0x%04X,             // Range Maximum",
-	    bi->iolimit - 1);
+	    PCI_EMUL_IOLIMIT - 1);
 	dsdt_line("        0x0000,             // Translation Offset");
 	dsdt_line("        0x%04X,             // Length",
-	    bi->iolimit - bi->iobase);
+	    PCI_EMUL_IOLIMIT - PCI_EMUL_IOBASE);
 	dsdt_line("        ,, , TypeStatic)");
 
 	/* mmio window (32-bit) */
@@ -1954,8 +2269,67 @@ pci_bus_write_dsdt(int bus)
 			    dev->dev_ops->vdev_write_dsdt != NULL)
 				dev->dev_ops->vdev_write_dsdt(dev);
 		}
+		if ((1U << slot) & bi->hp_slots) {
+			char slotname[4];
+			snprintf(slotname, 4, "S%02X", slot << 3);
+			dsdt_line("    Device (%s)", slotname);
+			dsdt_line("    {");
+			dsdt_line("      Name (_ADR, 0x00%02X0000)", slot);
+			dsdt_line("      Name (_SUN, 0x%02X)", slot);
+			dsdt_line("      Method (_EJ0, 1, NotSerialized)");
+			dsdt_line("      {");
+			dsdt_line("        PCEJ (Zero, _SUN)");
+			dsdt_line("      }");
+			dsdt_line("    }");
+		}
 	}
 	dsdt_unindent(2);
+
+	dsdt_line("");
+	dsdt_line("    Method (PCNT, 0, NotSerialized)");
+	dsdt_line("    {");
+	dsdt_line("      Acquire (\\_SB.BLCK, 0xFFFF)");
+	dsdt_line("      BNUM = 0x%02X", bus);
+	dsdt_line("      DVNT (PCIU, One) /* store PCIU/PCID to local and release BLCK */");
+	dsdt_line("      DVNT (PCID, 0x03)");
+	dsdt_line("      Release (\\_SB.BLCK)");
+	dsdt_line("    }");
+	dsdt_line("    Method (DVNT, 2, NotSerialized)");
+	dsdt_line("    {");
+	for (slot = 0; slot < MAXSLOTS; slot++) {
+		if ((1U << slot) & bi->hp_slots) {
+			char slotname[4];
+			snprintf(slotname, 4, "S%02X", slot << 3);
+			dsdt_line("      If (Arg0 & 0x%08X)", 1U << slot);
+			dsdt_line("      {");
+			dsdt_line("        Notify (%s, Arg1)", slotname);
+			dsdt_line("      }");
+		}
+	}
+	dsdt_line("    }");
+
+	dsdt_line("    Device (GED) /* GED for hotplug */");
+	dsdt_line("    {");
+	dsdt_line("      Name (_HID, \"ACPI0013\")");
+	dsdt_line("      Name (_UID, Zero)");
+	dsdt_line("      Name (_CRS, ResourceTemplate ()");
+	dsdt_line("      {");
+	dsdt_line("        Interrupt (ResourceConsumer, Level, ActiveLow, Exclusive, ,, )");
+	dsdt_line("        {");
+	dsdt_line("          0x%x,", bi->hp_vgsi);
+	dsdt_line("        }");
+	dsdt_line("      })");
+	dsdt_line("      Method (_EVT, 1, Serialized)");
+	dsdt_line("      {");
+	dsdt_line("        If ((Arg0 == 0x%x))", bi->hp_vgsi);
+	dsdt_line("        {");
+	dsdt_line("          Acquire (\\_SB.BLCK, 0xFFFF)");
+	dsdt_line("          \\_SB.PCI%01X.PCNT ()", bus);
+	dsdt_line("          Release (\\_SB.BLCK)");
+	dsdt_line("        }");
+	dsdt_line("      }");
+	dsdt_line("    }");
+
 done:
 	dsdt_line("  }");
 }

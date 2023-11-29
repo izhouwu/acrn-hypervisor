@@ -96,6 +96,8 @@ enum dm_msgid {
 	DM_RESUME,		/* Resume this UOS from suspend state */
 	DM_QUERY,		/* Ask power state of this UOS */
 	DM_BLKRESCAN,		/* Rescan virtio-blk device for any changes in UOS */
+	DM_ADD_PCI,
+	DM_DEL_PCI,
 	DM_MAX,
 };
 

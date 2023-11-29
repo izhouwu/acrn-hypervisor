@@ -390,6 +390,8 @@ int	pci_msix_table_bar(struct pci_vdev *pi);
 int	pci_msix_pba_bar(struct pci_vdev *pi);
 int	pci_msi_maxmsgnum(struct pci_vdev *pi);
 int	pci_parse_slot(char *opt);
+int	pci_add_dev(struct vmctx *ctx, char *opt);
+int	pci_del_dev(struct vmctx *ctx, char *opt);
 int	pci_populate_msicap(struct msicap *cap, int msgs, int nextptr);
 int	pci_emul_add_msixcap(struct pci_vdev *pi, int msgnum, int barnum);
 int	pci_emul_msix_twrite(struct pci_vdev *pi, uint64_t offset, int size,

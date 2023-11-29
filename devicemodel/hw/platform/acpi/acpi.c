@@ -883,6 +883,39 @@ basl_fwrite_dsdt(FILE *fp, struct vmctx *ctx)
 	dsdt_line("    }");
 	dsdt_line("  }");
 
+	dsdt_line("");
+	dsdt_line("  Scope (\\_SB)");
+	dsdt_line("  {");
+	dsdt_line("    OperationRegion (PCST, SystemIO, 0x0E00, 0x08)");
+	dsdt_line("    Field (PCST, DWordAcc, NoLock, WriteAsZeros)");
+	dsdt_line("    {");
+	dsdt_line("      PCIU, 32,");
+	dsdt_line("      PCID, 32,");
+	dsdt_line("    }");
+	dsdt_line("");
+	dsdt_line("    OperationRegion (BNMR, SystemIO, 0x0E08, 0x04)");
+	dsdt_line("    Field (BNMR, DWordAcc, NoLock, WriteAsZeros)");
+	dsdt_line("    {");
+	dsdt_line("      BNUM, 32");
+	dsdt_line("    }");
+	dsdt_line("");
+	dsdt_line("    OperationRegion (SEJ, SystemIO, 0x0E0C, 0x04)");
+	dsdt_line("    Field (SEJ, DWordAcc, NoLock, WriteAsZeros)");
+	dsdt_line("    {");
+	dsdt_line("      SNEJ, 32");
+	dsdt_line("    }");
+	dsdt_line("");
+	dsdt_line("    Mutex (BLCK, 0x00) /* protect BNUM */");
+	dsdt_line("    Method (PCEJ, 2, NotSerialized)");
+	dsdt_line("    {");
+	dsdt_line("      Acquire (BLCK, 0xFFFF)");
+	dsdt_line("      BNUM = Arg0");
+	dsdt_line("      SNEJ = (One << Arg1)");
+	dsdt_line("      Release (BLCK)");
+	dsdt_line("      Return (Zero)");
+	dsdt_line("    }");
+	dsdt_line("  }");
+
 	acpi_dev_write_dsdt(ctx);
 
 	pm_write_dsdt(ctx, basl_ncpu);

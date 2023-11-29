@@ -24,6 +24,7 @@
 #include "pm.h"
 #include "vmmapi.h"
 #include "log.h"
+#include "pci_core.h"
 
 #define INTR_STORM_MONITOR_PERIOD	10 /* 10 seconds */
 #define INTR_STORM_THRESHOLD	100000 /* 10K times per second */
@@ -450,6 +451,40 @@ static void handle_blkrescan(struct mngr_msg *msg, int client_fd, void *param)
 	mngr_send_msg(client_fd, &ack, NULL, ACK_TIMEOUT);
 }
 
+static void handle_add_pci(struct mngr_msg *msg, int client_fd, void *param)
+{
+	struct mngr_msg ack;
+	struct vmctx *ctx = param;
+	int ret = 0;
+
+	ack.magic = MNGR_MSG_MAGIC;
+	ack.msgid = msg->msgid;
+	ack.timestamp = msg->timestamp;
+
+	ret = pci_add_dev(ctx, msg->data.devargs);
+
+	ack.data.err = ret;
+
+	mngr_send_msg(client_fd, &ack, NULL, ACK_TIMEOUT);
+}
+
+static void handle_del_pci(struct mngr_msg *msg, int client_fd, void *param)
+{
+	struct mngr_msg ack;
+	struct vmctx *ctx = param;
+	int ret = 0;
+
+	ack.magic = MNGR_MSG_MAGIC;
+	ack.msgid = msg->msgid;
+	ack.timestamp = msg->timestamp;
+
+	ret = pci_del_dev(ctx, msg->data.devargs);
+
+	ack.data.err = ret;
+
+	mngr_send_msg(client_fd, &ack, NULL, ACK_TIMEOUT);
+}
+
 static struct monitor_vm_ops pmc_ops = {
 	.stop       = NULL,
 	.resume     = vm_monitor_resume,
@@ -490,6 +525,8 @@ int monitor_init(struct vmctx *ctx)
 	ret += mngr_add_handler(monitor_fd, DM_RESUME, handle_resume, NULL);
 	ret += mngr_add_handler(monitor_fd, DM_QUERY, handle_query, NULL);
 	ret += mngr_add_handler(monitor_fd, DM_BLKRESCAN, handle_blkrescan, NULL);
+	ret += mngr_add_handler(monitor_fd, DM_ADD_PCI, handle_add_pci, ctx);
+	ret += mngr_add_handler(monitor_fd, DM_DEL_PCI, handle_del_pci, ctx);
 
 	if (ret) {
 		pr_err("%s %d\r\n", __func__, __LINE__);
