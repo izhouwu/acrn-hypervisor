@@ -935,13 +935,8 @@ int32_t hcall_assign_pcidev(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm,
 	int32_t ret = -EINVAL;
 	struct acrn_pcidev pcidev;
 
-	/* We should only assign a device to a post-launched VM at creating time for safety, not runtime or other cases*/
-	if (is_created_vm(target_vm)) {
-		if (copy_from_gpa(vm, &pcidev, param2, sizeof(pcidev)) == 0) {
-			ret = vpci_assign_pcidev(target_vm, &pcidev);
-		}
-	} else {
-		pr_err("%s, vm[%d] is not a postlaunched VM, or not in CREATED status to be assigned with a pcidev\n", __func__, vm->vm_id);
+	if (copy_from_gpa(vm, &pcidev, param2, sizeof(pcidev)) == 0) {
+		ret = vpci_assign_pcidev(target_vm, &pcidev);
 	}
 
 	return ret;
@@ -965,13 +960,8 @@ int32_t hcall_deassign_pcidev(struct acrn_vcpu *vcpu, struct acrn_vm *target_vm,
 	int32_t ret = -EINVAL;
 	struct acrn_pcidev pcidev;
 
-	/* We should only de-assign a device from a post-launched VM at creating/shutdown/reset time */
-	if ((is_paused_vm(target_vm) || is_created_vm(target_vm))) {
-		if (copy_from_gpa(vm, &pcidev, param2, sizeof(pcidev)) == 0) {
-			ret = vpci_deassign_pcidev(target_vm, &pcidev);
-		}
-	} else {
-		pr_err("%s, vm[%d] is not a postlaunched VM, or not in PAUSED/CREATED status to be deassigned from a pcidev\n", __func__, vm->vm_id);
+	if (copy_from_gpa(vm, &pcidev, param2, sizeof(pcidev)) == 0) {
+		ret = vpci_deassign_pcidev(target_vm, &pcidev);
 	}
 
 	return ret;
@@ -1060,7 +1050,6 @@ int32_t hcall_set_ptdev_intr_info(struct acrn_vcpu *vcpu, struct acrn_vm *target
 	struct acrn_vm *vm = vcpu->vm;
 	int32_t ret = -1;
 
-	if (is_created_vm(target_vm)) {
 		struct hc_ptdev_irq irq;
 
 		if (copy_from_gpa(vm, &irq, param2, sizeof(irq)) == 0) {
@@ -1092,7 +1081,6 @@ int32_t hcall_set_ptdev_intr_info(struct acrn_vcpu *vcpu, struct acrn_vm *target
 				pr_err("%s: Invalid irq type: %u\n", __func__, irq.type);
 			}
 		}
-	}
 	return ret;
 }
 
