@@ -631,9 +631,15 @@ static void
 virtio_snd_release_data_node(struct virtio_sound_pcm *stream, struct virtio_sound_msg_node *msg_node, int len)
 {
 	struct virtio_snd_pcm_status *ret_status;
+	snd_pcm_sframes_t sd;
+	int err;
 
 	ret_status = (struct virtio_snd_pcm_status *)msg_node->iov[msg_node->cnt - 1].iov_base;
 	ret_status->status = VIRTIO_SND_S_OK;
+	err = snd_pcm_delay(stream->handle, &sd);
+	if (err < 0)
+		WPRINTF("%s: get pcm delay, error number %d!\n", __func__, err);
+	ret_status->latency_bytes = sd * virtio_sound_get_frame_size(stream);
 	pthread_mutex_lock(&msg_node->vq->mtx);
 	vq_relchain(msg_node->vq, msg_node->idx, len + sizeof(struct virtio_snd_pcm_status));
 	vq_endchains(msg_node->vq, 0);
@@ -740,6 +746,7 @@ virtio_sound_clean_vq(struct virtio_sound_pcm *stream) {
 		vq = msg_node->vq;
 		ret_status = (struct virtio_snd_pcm_status *)msg_node->iov[msg_node->cnt - 1].iov_base;
 		ret_status->status = VIRTIO_SND_S_BAD_MSG;
+		ret_status->latency_bytes = 0;
 		pthread_mutex_lock(&msg_node->vq->mtx);
 		vq_relchain(vq, msg_node->idx, sizeof(struct virtio_snd_pcm_status));
 		pthread_mutex_unlock(&msg_node->vq->mtx);
