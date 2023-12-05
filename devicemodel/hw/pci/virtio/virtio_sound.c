@@ -634,8 +634,10 @@ virtio_snd_release_data_node(struct virtio_sound_pcm *stream, struct virtio_soun
 
 	ret_status = (struct virtio_snd_pcm_status *)msg_node->iov[msg_node->cnt - 1].iov_base;
 	ret_status->status = VIRTIO_SND_S_OK;
+	pthread_mutex_lock(&msg_node->vq->mtx);
 	vq_relchain(msg_node->vq, msg_node->idx, len + sizeof(struct virtio_snd_pcm_status));
 	vq_endchains(msg_node->vq, 0);
+	pthread_mutex_unlock(&msg_node->vq->mtx);
 	pthread_mutex_lock(&stream->mtx);
 	STAILQ_REMOVE_HEAD(&stream->head, link);
 	pthread_mutex_unlock(&stream->mtx);
@@ -738,8 +740,9 @@ virtio_sound_clean_vq(struct virtio_sound_pcm *stream) {
 		vq = msg_node->vq;
 		ret_status = (struct virtio_snd_pcm_status *)msg_node->iov[msg_node->cnt - 1].iov_base;
 		ret_status->status = VIRTIO_SND_S_BAD_MSG;
+		pthread_mutex_lock(&msg_node->vq->mtx);
 		vq_relchain(vq, msg_node->idx, sizeof(struct virtio_snd_pcm_status));
-
+		pthread_mutex_unlock(&msg_node->vq->mtx);
 		pthread_mutex_lock(&stream->mtx);
 		STAILQ_REMOVE_HEAD(&stream->head, link);
 		pthread_mutex_unlock(&stream->mtx);
@@ -747,8 +750,11 @@ virtio_sound_clean_vq(struct virtio_sound_pcm *stream) {
 		free(msg_node);
 	}
 
-	if (vq)
+	if (vq) {
+		pthread_mutex_lock(&vq->mtx);
 		vq_endchains(vq, 0);
+		pthread_mutex_unlock(&vq->mtx);
+	}
 }
 
 static void*
@@ -806,8 +812,10 @@ virtio_sound_pcm_thread(void *param)
 		}
 		stream->handle = NULL;
 	}
+	pthread_mutex_lock(&ctl_vq->mtx);
 	vq_relchain(ctl_vq, stream->ret_idx, stream->ret_len);
 	vq_endchains(ctl_vq, 1);
+	pthread_mutex_unlock(&ctl_vq->mtx);
 	free(stream->poll_fd);
 	stream->poll_fd = NULL;
 	stream->status = VIRTIO_SND_BE_INITED;
@@ -1714,10 +1722,15 @@ virtio_sound_notify_ctl(void *vdev, struct virtio_vq_info *vq)
 				WPRINTF("%s: unsupported request 0x%X!\n", __func__, n);
 				break;
 		}
-		if (info->hdr.code != VIRTIO_SND_R_PCM_RELEASE)
+		if (info->hdr.code != VIRTIO_SND_R_PCM_RELEASE) {
+			pthread_mutex_lock(&vq->mtx);
 			vq_relchain(vq, idx, ret_len);
+			pthread_mutex_unlock(&vq->mtx);
+		}
 	}
+	pthread_mutex_lock(&vq->mtx);
 	vq_endchains(vq, 1);
+	pthread_mutex_unlock(&vq->mtx);
 }
 
 static void
@@ -2247,8 +2260,10 @@ virtio_sound_send_event(struct virtio_sound *virt_snd, struct virtio_snd_event *
 	}
 
 	memcpy(iov[0].iov_base, event, sizeof(struct virtio_snd_event));
+	pthread_mutex_lock(&vq->mtx);
 	vq_relchain(vq, idx, sizeof(struct virtio_snd_event));
 	vq_endchains(vq, 0);
+	pthread_mutex_unlock(&vq->mtx);
 
 	return 0;
 }
