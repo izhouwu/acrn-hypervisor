@@ -25,6 +25,8 @@
 #include <linux/spi/spidev.h>
 
 #include "dm.h"
+#include "dm_string.h"
+#include "mevent.h"
 #include "pci_core.h"
 #include "virtio.h"
 #include "acpi.h"
@@ -127,6 +129,33 @@ struct virtio_spi_transfer_req {
 	uint32_t rx_buf_size;
 };
 
+/*
+ * Virtio SPI Device Notification Mechanism.
+ *
+ * SPI Bus is a single master bus that all transfers are started by the SPI
+ * Master. In many use cases, SPI devices will leverage a side band signal like
+ * GPIO to notify the master that it has data to be processed.
+ *
+ * In the virtualization environment, we provide a SPI device notification
+ * mechanism in the virtio spi controller with a dedicated event queue. 
+ * Guest pushes an IRQ enable/unmask request for a chip select to the event
+ * queue to enable the notification for the SPI device. When SPI device BE
+ * decides to notify the FE SPI device driver, the IRQ request descriptor is
+ * "used" to return back to the FE. At the same time, the IRQ is disabled. FE
+ * needs to push the IRQ request again for next notification.
+ */
+struct virtio_spi_irq_req {
+	uint8_t cs;
+};
+
+/* SPI device IRQ status */
+#define VIRTIO_SPI_IRQ_STATUS_VALID	0
+#define VIRTIO_SPI_IRQ_STATUS_INVALID	1
+
+struct virtio_spi_irq_resp {
+	uint8_t status;
+};
+
 enum vspidev_type {
 	VSPIDEV_TYPE_NULL = 0,
 	VSPIDEV_TYPE_LOOPBACK,
@@ -153,6 +182,12 @@ struct vspidev {
 	int type;
 	struct vspidev_be *be;
 	void *priv;
+
+	/* TODO move to virtio spi, since this is vspi specific */
+	bool irq_pending;
+	bool irq_enabled;
+	int evtq_idx;		/* the desc index to return to used ring */
+	uint8_t *irq_status;	/* the status in the response descriptor */
 };
 
 static int acpi_spi_controller_num;
@@ -516,7 +551,7 @@ struct virtio_spi_config {
  */
 struct virtio_spi {
 	struct virtio_base base;
-	struct virtio_vq_info vq;
+	struct virtio_vq_info vqs[2];	/* transferq and eventq */
 	struct virtio_spi_config config;
 	struct vspidev *vspidevs[MAX_SPIDEVS];
 	int spidev_num;
@@ -524,6 +559,16 @@ struct virtio_spi {
 	pthread_t req_tid;
 	pthread_mutex_t req_mtx;
 	pthread_cond_t req_cond;
+
+	/* for the tcp based event proxy */
+	pthread_mutex_t evt_mtx;
+	int evt_listen_port;
+	struct mevent *mevent_listen;	/* poll the listen fd */
+	struct mevent *mevent_event;	/* poll the event injector fd */
+	int evt_listen_fd;
+	int evt_fd;
+	bool evt_port_opened;
+
 	int in_process;
 	int closing;
 };
@@ -565,7 +610,7 @@ virtio_spi_read_cfg(void *vdev, int offset, int size, uint32_t *retval)
 
 static struct virtio_ops virtio_spi_ops = {
 	"virtio_spi",		/* our name */
-	1,			/* we support 1 virtqueue */
+	2,			/* transferq and eventq */
 	sizeof(struct virtio_spi_config), /* config reg size */
 	virtio_spi_reset,	/* reset */
 	virtio_spi_notify,	/* device-wide qnotify */
@@ -592,19 +637,22 @@ virtio_spi_proc_thread(void *arg)
 {
 	struct virtio_spi *vspi = arg;
 	struct vspidev *vspidev;
-	struct virtio_vq_info *vq = &vspi->vq;
+	struct virtio_vq_info *xferq = &vspi->vqs[0];
+	struct virtio_vq_info *evtq = &vspi->vqs[1];
 	struct iovec iov[4];
 	uint16_t idx, flags[4];
 	struct virtio_spi_transfer_req req;
 	int n;
 	struct virtio_spi_out_hdr *out_hdr;
 	struct virtio_spi_in_hdr *in_hdr;
+	struct virtio_spi_irq_req *irq_req;
+	struct virtio_spi_irq_resp *irq_resp;
 
 	for (;;) {
 		pthread_mutex_lock(&vspi->req_mtx);
 
 		vspi->in_process = 0;
-		while (!vq_has_descs(vq) && !vspi->closing)
+		while (!vq_has_descs(xferq) && !vq_has_descs(evtq) && !vspi->closing)
 			pthread_cond_wait(&vspi->req_cond, &vspi->req_mtx);
 
 		if (vspi->closing) {
@@ -613,10 +661,11 @@ virtio_spi_proc_thread(void *arg)
 		}
 		vspi->in_process = 1;
 		pthread_mutex_unlock(&vspi->req_mtx);
-		do {
-			n = vq_getchain(vq, &idx, iov, 4, flags);
+		/* handle transfer requests */
+		while (vq_has_descs(xferq)) {
+			n = vq_getchain(xferq, &idx, iov, 4, flags);
 			if (n != 4) {
-				WPRINTF("virtio_spi_proc: failed to get iov from virtqueue\n");
+				WPRINTF("virtio_spi_proc: failed to get iov from transfer queue\n");
 				continue;
 			}
 			memset(&req, 0, sizeof(req));
@@ -634,17 +683,190 @@ virtio_spi_proc_thread(void *arg)
 				vspidev = vspi->vspidevs[req.head->slave_id];
 				in_hdr->result = vspidev->be->transfer(vspidev, &req);
 			}
-			vq_relchain(vq, idx, 1);
-		} while (vq_has_descs(vq));
-		vq_endchains(vq, 0);
+			vq_relchain(xferq, idx, 1);
+		};
+		vq_endchains(xferq, 0);
+
+		/* handle SPI device event enable requests in event queue */
+		bool evtq_desc_used = false;
+		while (vq_has_descs(evtq)) {
+			n = vq_getchain(evtq, &idx, iov, 2, flags);
+			if (n != 2) {
+				WPRINTF("virtio_spi_proc: failed to get iov from event queue\n");
+				continue;
+			}
+			irq_req = iov[0].iov_base;
+			irq_resp = iov[1].iov_base;
+			if (irq_req->cs >= vspi->spidev_num) {
+				irq_resp->status = VIRTIO_SPI_IRQ_STATUS_INVALID;
+				vq_relchain(evtq, idx, 1);
+				evtq_desc_used = true;
+			} else {
+				vspidev = vspi->vspidevs[irq_req->cs];
+				DPRINTF("unmask event for cs %d\n", vspidev->cs);
+				pthread_mutex_lock(&vspi->evt_mtx);
+				if (vspidev->irq_pending) {
+					irq_resp->status = VIRTIO_SPI_IRQ_STATUS_VALID;
+					vq_relchain(evtq, idx, 1);
+					evtq_desc_used = true;
+					vspidev->irq_pending = false;
+					vspidev->irq_enabled = false;
+					DPRINTF("inject event for cs %d: status: %d\n",
+							vspidev->cs, irq_resp->status);
+				} else {
+					vspidev->irq_enabled = true;
+					vspidev->evtq_idx = idx;
+					vspidev->irq_status = &irq_resp->status;
+				}
+				pthread_mutex_unlock(&vspi->evt_mtx);
+			}
+		};
+		if (evtq_desc_used) {
+			vq_endchains(evtq, 0);
+		}
+
 	}
 }
 
+void vspidev_inject_irq(struct vspidev *vspidev, uint8_t irq_status)
+{
+	pthread_mutex_lock(&vspidev->vspi->evt_mtx);
+	if (vspidev->irq_enabled) {
+		struct virtio_vq_info *evtq = &vspidev->vspi->vqs[1];
+		*vspidev->irq_status = irq_status;
+		vq_relchain(evtq, vspidev->evtq_idx, 1);
+		vspidev->irq_pending = false;
+		vspidev->irq_enabled = false;
+		DPRINTF("inject event for cs %d: status: %d\n",
+					vspidev->cs, irq_status);
+		vq_endchains(evtq, 0);
+	} else {
+		vspidev->irq_pending = true;
+		DPRINTF("pending event for cs %d\n", vspidev->cs);
+	}
+	pthread_mutex_unlock(&vspidev->vspi->evt_mtx);
+}
+
+static void
+vspi_event_handler(int fd, enum ev_type ev, void *arg)
+{
+	struct virtio_spi *vspi = (struct virtio_spi *)arg;
+	uint8_t cs;
+	int rc = -1;
+
+	// handle all injected events?
+	rc = recv(vspi->evt_fd, &cs, 1, 0);
+	if (rc <= 0 && errno != EAGAIN) {
+		if (vspi->mevent_event) {
+			mevent_delete(vspi->mevent_event);
+			vspi->mevent_event = NULL;
+		}
+		if (vspi->evt_fd > 0) {
+			close(vspi->evt_fd);
+			vspi->evt_fd = -1;
+		}
+		vspi->evt_port_opened = false;
+		WPRINTF("%s: connection closed, rc = %d, errno = %d\n",
+			__func__, rc, errno);
+	}
+
+	if (cs >= vspi->spidev_num) {
+		WPRINTF("%s try to inject event for a non-existent spi device, ignored!\n", __func__);
+	} else {
+		vspidev_inject_irq(vspi->vspidevs[cs], VIRTIO_SPI_IRQ_STATUS_VALID);
+	}
+}
+
+static void
+vspi_mevent_teardown(void *param)
+{
+	struct virtio_spi *vspi = (struct virtio_spi *)param;
+
+	if (!vspi || !vspi->evt_port_opened)
+		return;
+
+	if (vspi->evt_fd > 0) {
+		close(vspi->evt_fd);
+		vspi->evt_fd = -1;
+	}
+	vspi->evt_port_opened = false;
+}
+
+static void
+vspi_event_proxy_accept(int fd __attribute__((unused)),
+		 enum ev_type t __attribute__((unused)),
+		 void *arg)
+{
+	struct virtio_spi *vspi = (struct virtio_spi *)arg;
+	int s, flags;
+
+	s = accept(vspi->evt_listen_fd, NULL, NULL);
+	if (s < 0) {
+		DPRINTF("vspi event: accept error %d\n", s);
+		return;
+	}
+
+	if (vspi->evt_port_opened) {
+		DPRINTF("vspi event: already connected\n");
+		close(s);
+		return;
+	}
+
+	flags = fcntl(s, F_GETFL);
+	fcntl(s, F_SETFL, flags | O_NONBLOCK);
+
+	vspi->evt_port_opened = true;
+	vspi->evt_fd = s;
+	// TODO allow reconnection after disconnection.
+	vspi->mevent_event = mevent_add(s, EVF_READ, vspi_event_handler, vspi,
+		vspi_mevent_teardown, vspi);
+	if (!vspi->mevent_event)
+		WPRINTF("vspi event: failed to add mevent for event injector\n");
+	DPRINTF("vspi event: %s\r\n", __func__);
+}
+
+static void
+virtio_spi_evt_listen(struct virtio_spi *vspi)
+{
+	int fd;
+	struct sockaddr_in addr;
+
+	if (vspi->evt_listen_port) {
+		fd = socket(AF_INET, SOCK_STREAM | O_NONBLOCK, 0);
+		if (fd <= 0) {
+		    WPRINTF("vspi event: socket creation failed...\n");
+		    return;
+		} else {
+		    DPRINTF("vspi event: Socket successfully created..\n");
+		}
+		vspi->evt_listen_fd = fd;
+
+		addr.sin_family = AF_INET;
+		addr.sin_addr.s_addr = htonl(INADDR_ANY);
+		addr.sin_port = htons(vspi->evt_listen_port);
+		if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+			WPRINTF("vspi event: bind failed, errno = %d\n",
+				errno);
+			return;
+		}
+		if (listen(fd, 1) < 0) {
+			WPRINTF("vspi event: listen failed, errno = %d\n",
+				errno);
+			return;
+		}
+		vspi->evt_port_opened = false;
+		vspi->mevent_listen = mevent_add(fd, EVF_READ, vspi_event_proxy_accept, vspi, NULL, NULL);
+		if (!vspi->mevent_listen) {
+			WPRINTF("vspi event: mevent_add failed\n");
+			return;
+		}
+	}
+}
 
 static int
 virtio_spi_parse(struct virtio_spi *vspi, char *optstr)
 {
-	char *cp, *type;
+	char *cp, *type, *t;
 	struct vspidev *vspidev;
 	struct vspidev_be *vspidev_be;
 	int ret;
@@ -653,6 +875,15 @@ virtio_spi_parse(struct virtio_spi *vspi, char *optstr)
 		cp = strsep(&optstr, ",");
 		if (cp != NULL && *cp !='\0') {
 			type = strsep(&cp, ":");
+			if (strncmp("evt-port", type, 8) == 0) {
+				if (dm_strtoi(cp, &t, 10, &vspi->evt_listen_port)
+						|| vspi->evt_listen_port < 0) {
+					WPRINTF("%s: fail to parse evt-port\n", __func__);
+					return -1;
+				}
+				virtio_spi_evt_listen(vspi);
+				continue;
+			}
 			vspidev_be = find_vspidev_be_from_name(type);
 			if (vspidev_be == NULL) {
 				WPRINTF("Not supported type %s\n", type);
@@ -740,10 +971,11 @@ virtio_spi_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	}
 
 	/* init virtio struct and virtqueues */
-	virtio_linkup(&vspi->base, &virtio_spi_ops, vspi, dev, &vspi->vq, BACKEND_VBSU);
+	virtio_linkup(&vspi->base, &virtio_spi_ops, vspi, dev, vspi->vqs, BACKEND_VBSU);
 	vspi->base.mtx = &vspi->mtx;
 	vspi->base.device_caps = VIRTIO_SPI_HOSTCAPS;
-	vspi->vq.qsize = 64;
+	vspi->vqs[0].qsize = 64;
+	vspi->vqs[1].qsize = MAX_SPIDEVS;
 
 	pci_set_cfgdata16(dev, PCIR_DEVICE, VIRTIO_DEV_SPI);
 	pci_set_cfgdata16(dev, PCIR_VENDOR, VIRTIO_VENDOR);
@@ -762,7 +994,9 @@ virtio_spi_init(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 	pthread_mutex_init(&vspi->req_mtx, NULL);
 	pthread_cond_init(&vspi->req_cond, NULL);
 	pthread_create(&vspi->req_tid, NULL, virtio_spi_proc_thread, vspi);
-	pthread_setname_np(vspi->req_tid, "virtio-spi");
+	pthread_setname_np(vspi->req_tid, "virtio-spi-req");
+
+	pthread_mutex_init(&vspi->evt_mtx, NULL);
 
 	return 0;
 
@@ -786,6 +1020,7 @@ virtio_spi_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 		vspi_remove_devices(vspi);
 		pthread_mutex_destroy(&vspi->req_mtx);
 		pthread_mutex_destroy(&vspi->mtx);
+		pthread_mutex_destroy(&vspi->evt_mtx);
 		virtio_spi_reset(vspi);
 		free(vspi);
 		dev->arg = NULL;
@@ -798,7 +1033,6 @@ acpi_add_spi_controller(struct pci_vdev *dev, int spi_bus)
 	dsdt_line("Device (SPI%d)", spi_bus);
 	dsdt_line("{");
 	dsdt_line("    Name (_ADR, 0x%04X%04X)", dev->slot, dev->func);
-	dsdt_line("");
 	dsdt_line("}");
 }
 
@@ -809,18 +1043,19 @@ acpi_add_spi_dev(int spi_bus, int cs)
 	dsdt_line("{");
 	dsdt_line("    Device (TP%d)", cs);
 	dsdt_line("    {");
-	dsdt_line("    Name (_HID, \"SPT0001\")");
-	dsdt_line("    Name (_DDN, \"SPI test device connected to CS%d\")", cs);
-	dsdt_line("    Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings");
-	dsdt_line("    {");
-	dsdt_line("        SpiSerialBusV2 (%d, PolarityLow, FourWireMode, 8,", cs);
-	dsdt_line("            ControllerInitiated, 1000000, ClockPolarityLow,");
-	dsdt_line("            ClockPhaseFirst, \"\\\\_SB.PCI0.SPI%d\",", spi_bus);
-	dsdt_line("            0x00, ResourceConsumer, , Exclusive,");
-	dsdt_line("            )");
-	dsdt_line("    })");
+	dsdt_line("        Name (_HID, \"SPT0001\")");
+	dsdt_line("        Name (_DDN, \"SPI test device connected to CS%d\")", cs);
+	dsdt_line("        Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings");
+	dsdt_line("        {");
+	dsdt_line("            SpiSerialBusV2 (%d, PolarityLow, FourWireMode, 8,", cs);
+	dsdt_line("                ControllerInitiated, 1000000, ClockPolarityLow,");
+	dsdt_line("                ClockPhaseFirst, \"\\\\_SB.PCI0.SPI%d\",", spi_bus);
+	dsdt_line("                0x00, ResourceConsumer, , Exclusive,");
+	dsdt_line("                )");
+	dsdt_line("            Interrupt(ResourceConsumer, Edge, ActiveHigh, Exclusive,");
+	dsdt_line("                0, \"\\\\_SB.PCI0.SPI%d\") {%d}", spi_bus, cs);
+	dsdt_line("        })");
 	dsdt_line("    }");
-	dsdt_line("");
 	dsdt_line("}");
 }
 
