@@ -1,0 +1,77 @@
+{
+	"camera_manager": {
+		"port": 8005,
+		"address": "127.0.0.1"
+	},
+
+	"phy_camera": [
+		{
+			"camera": {
+				"id": 0,
+				"width": 1280,
+				"height": 720,
+				"format": "V4L2_PIX_FMT_NV12",
+				"sensor_name": "ov13b10-wf",
+				"driver_type": "HAL_INTERFACE",
+				"devnode": "/dev/video0",
+				"native_driver": "/usr/lib/libvcamhal.so",
+				"share": [
+					"VM1",
+					"VM2"
+				]
+			}
+		},
+		{
+			"camera": {
+				"id": 1,
+				"width": 1280,
+				"height": 720,
+				"format": "V4L2_PIX_FMT_NV12",
+				"sensor_name": "ov13b10-uf",
+				"driver_type": "HAL_INTERFACE",
+				"devnode": "/dev/video1",
+				"native_driver": "/usr/lib/libvcamhal.so",
+				"share": [
+					"VM1",
+					"VM2"
+				]
+			}
+		}
+	],
+	"VM0": [
+		{
+			"camera": {
+				"id": 0,
+				"phy_id": 0
+			}
+		}
+	],
+	"VM1": [
+		{
+			"camera": {
+				"id": 0,
+				"phy_id": 0
+			}
+		},
+		{
+			"camera": {
+				"id": 1,
+				"phy_id": 1
+			}
+		}
+	],
+	"VM2": [
+		{
+			"camera": {
+				"id": 0,
+				"phy_id": 0
+			}
+		},
+		{
+			"camera": {
+				"id": 1,
+				"phy_id": 1
+			}
+		}
+	]
+}
