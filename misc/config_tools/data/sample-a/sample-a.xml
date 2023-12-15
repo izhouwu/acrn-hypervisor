@@ -3775,8 +3775,8 @@
           <parameter>0x0</parameter>
         </capability>
         <capability id="log_area">
-          <log_area_minimum_length>0x10000</log_area_minimum_length>
-          <log_area_start_address>0x4ae9aa000</log_area_start_address>
+          <log_area_minimum_length>0x0</log_area_minimum_length>
+          <log_area_start_address>0x0</log_area_start_address>
         </capability>
       </device>
       <device id="PNP0C02">
