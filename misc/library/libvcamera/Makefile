@@ -12,7 +12,7 @@ ICAMHAL_TEST_SRC = icamhal_test.cpp
 ICAMHAL_TEST_OBJ = $(ICAMHAL_TEST_SRC:.cpp=.o)
 ICAMHAL_TEST = icamhal_test.bin
 
-LDFLAGS = -L. -lcamhal
+LDFLAGS = -L. -lhal_adaptor
 
 all: $(VCAMHAL_OBJ) $(VCAMHAL_LIB) $(VCAMHAL_TEST) $(ICAMHAL_TEST)
 

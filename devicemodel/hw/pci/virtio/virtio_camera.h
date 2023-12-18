@@ -206,6 +206,7 @@ struct camera_dev {
 	stream_config_t stream_list;
 	stream_t streams[1];
 	int stream_state;
+	int buffer_list;
 	uint8_t buffer_count;
 	struct capture_buffer capture_buffers[MAX_BUFFER_COUNT];
 	STAILQ_HEAD(, capture_buffer) capture_list;

@@ -29,11 +29,11 @@
 #include "vICamera.h"
 
 #define VIRTIO_CAMERA_MAXSEGS 256
-
+#define SHARE_CAMERA
 /*
  * Host capabilities
  */
-#define VIRTIO_CAMERA_S_HOSTCAPS		(1UL << VIRTIO_F_VERSION_1)
+#define VIRTIO_CAMERA_S_HOSTCAPS (1UL << VIRTIO_F_VERSION_1)
 
 static void virtio_camera_dev_init(int camera_id);
 static int virtio_camera_hal_init(int camera_id);
@@ -50,56 +50,72 @@ void *g_hal_handle = NULL;
 struct camera_info g_camera_thread_param[VIRTIO_CAMERA_NUMQ];
 
 static struct camera_dev camera_devs[] = {
-	{
-		.id = 0,
-		.name = "video0",
-		.type = HAL_INTERFACE,
-	},
-	{
-		.id = 1,
-		.name = "video1",
-		.type = V4L2_INTERFACE,
-	},
-	{
-		.id = 2,
-		.name = "video2",
-		.type = V4L2_INTERFACE,
-	},
-	{
-		.id = 3,
-		.name = "video3",
-		.type = V4L2_INTERFACE,
-	},
-	{
-		.id = 4,
-		.name = "video4",
-		.type = V4L2_INTERFACE,
-	},
-	{
-		.id = 5,
-		.name = "video5",
-		.type = V4L2_INTERFACE,
-	},
-	{
-		.id = 6,
-		.name = "video6",
-		.type = V4L2_INTERFACE,
-	},
-	{
-		.id = 7,
-		.name = "video7",
-		.type = V4L2_INTERFACE,
-	},
+    {
+        .id = 0,
+        .name = "video0",
+        .type = HAL_INTERFACE,
+        .streams[0].width = 1280,
+        .streams[0].height = 960,
+    },
+    {
+        .id = 1,
+        .name = "video1",
+        .type = HAL_INTERFACE,
+        .streams[0].width = 1280,
+        .streams[0].height = 960,
+    },
+    {
+        .id = 2,
+        .name = "video2",
+        .type = HAL_INTERFACE,
+        .streams[0].width = 1280,
+        .streams[0].height = 960,
+    },
+    {
+        .id = 3,
+        .name = "video3",
+        .type = HAL_INTERFACE,
+        .streams[0].width = 1280,
+        .streams[0].height = 960,
+    },
+    {
+        .id = 4,
+        .name = "video1000",
+        .type = HAL_INTERFACE,
+        .streams[0].width = 1920,
+        .streams[0].height = 1080,
+    },
+    {
+        .id = 5,
+        .name = "video1000",
+        .type = HAL_INTERFACE,
+        .streams[0].width = 1920,
+        .streams[0].height = 1080,
+    },
+    {
+        .id = 6,
+        .name = "video1000",
+        .streams[0].width = 1920,
+        .streams[0].height = 1080,
+        .type = V4L2_INTERFACE,
+    },
+    {
+        .id = 7,
+        .name = "video1000",
+        .streams[0].width = 1920,
+        .streams[0].height = 1080,
+        .type = V4L2_INTERFACE,
+    },
 };
 
-#define GET_SYMBOL(handle, p, symbol)           \
-	(p) = (typeof(p))dlsym((handle), (symbol)); \
-	if ((p) == NULL) {                          \
-		goto Error;                             \
-	}                                           \
+#define GET_SYMBOL(handle, p, symbol)                                                                                  \
+	(p) = (typeof(p))dlsym((handle), (symbol));                                                                    \
+	if ((p) == NULL) {                                                                                             \
+		pr_info("Failed to find function in %s %s\n", hal_name, dlerror());                                    \
+	}                                                                                                              \
 	pr_info("find %s\n", (symbol));
 
-static int fill_hal_ops(char* hal_name)
+static int fill_hal_ops(char *hal_name)
 {
 	g_hal_handle = dlopen(hal_name, RTLD_LAZY);
 	if (g_hal_handle == NULL) {
@@ -123,10 +139,6 @@ static int fill_hal_ops(char* hal_name)
 		GET_SYMBOL(g_hal_handle, g_hal_ops.get_formats_number, "vcamera_get_formats_number");
 		GET_SYMBOL(g_hal_handle, g_hal_ops.get_formats, "vcamera_get_formats");
 		return 0;
-	Error:
-		pr_info("Failed to find function in %s %s\n", hal_name, dlerror());
-		dlclose(g_hal_handle);
-		g_hal_handle = NULL;
 	}
 	return -1;
 }
@@ -150,34 +162,35 @@ static int virtio_camera_req_bufs(int camera_id)
 		return -1;
 }
 
-static int virtio_camera_get_formats_number(int camera_id)
-{
-	pr_info("virtio_camera %s Enter\n", __func__);
-	if (camera_devs[camera_id].ops.get_formats_number)
-		return camera_devs[camera_id].ops.get_formats_number(camera_id);
-	else
-		return -1;
-}
+// static int virtio_camera_get_formats_number(int camera_id)
+// {
+// 	pr_info("virtio_camera %s Enter\n", __func__);
+// 	if (camera_devs[camera_id].ops.get_formats_number)
+// 		return camera_devs[camera_id].ops.get_formats_number(camera_id);
+// 	else
+// 		return -1;
+// }
 
-static int virtio_camera_get_formats(int camera_id,stream_t* p,int* streams_number)
-{
-	pr_info("virtio_camera %s Enter\n",__func__);
-	if (camera_devs[camera_id].ops.get_formats)
-		return camera_devs[camera_id].ops.get_formats(camera_id,p,streams_number);
-	else
-		return -1;
-}
+// static int virtio_camera_get_formats(int camera_id,stream_t* p,int* streams_number)
+// {
+// 	pr_info("virtio_camera %s Enter\n",__func__);
+// 	if (camera_devs[camera_id].ops.get_formats)
+// 		return camera_devs[camera_id].ops.get_formats(camera_id,p,streams_number);
+// 	else
+// 		return -1;
+// }
 
 static int virtio_camera_wrapper_config_streams(int camera_id)
 {
 	int ret = 0;
-	struct camera_dev* p = &camera_devs[camera_id];
-	stream_config_t* stream_list = &camera_devs[camera_id].stream_list;
+	struct camera_dev *p = &camera_devs[camera_id];
+	stream_config_t *stream_list = &camera_devs[camera_id].stream_list;
 
 	pr_info("virtio_camera %s Enter \n", __func__);
 
 	if (p->type == HAL_INTERFACE) {
-		ret = p->ops.config_streams(camera_id, stream_list);
+		if (p->ops.config_streams != NULL)
+			ret = p->ops.config_streams(camera_id, stream_list);
 	} else {
 		struct v4l2_format fmt;
 
@@ -188,8 +201,8 @@ static int virtio_camera_wrapper_config_streams(int camera_id)
 		fmt.fmt.pix.height = stream_list->streams[0].height;
 		fmt.fmt.pix.pixelformat = stream_list->streams[0].format;
 		fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
-
-		ret = p->ops.set_parameters(camera_id, &fmt);
+		if (p->ops.set_parameters != NULL)
+			ret = p->ops.set_parameters(camera_id, &fmt);
 	}
 
 	return ret;
@@ -271,26 +284,25 @@ static int virtio_camera_stop_stream(int camera_id)
 	return -1;
 };
 
-
 static int get_stride_size(int width, int format)
 {
 	int stride;
 
 	switch (format) {
-		case V4L2_PIX_FMT_YUYV:
-		case V4L2_PIX_FMT_YYUV:
-		case V4L2_PIX_FMT_YVYU:
-		case V4L2_PIX_FMT_UYVY:
-		case V4L2_PIX_FMT_VYUY:
-			stride = ALIGN_UP(width * 2, 64);
-			break;
-		case V4L2_PIX_FMT_NV12:
-		case V4L2_PIX_FMT_NV21:
-		        stride = ALIGN_UP(width, 64);
-		        break;
-	        default:
-		        stride = ALIGN_UP(width * 2, 64);
-		        break;
+	case V4L2_PIX_FMT_YUYV:
+	case V4L2_PIX_FMT_YYUV:
+	case V4L2_PIX_FMT_YVYU:
+	case V4L2_PIX_FMT_UYVY:
+	case V4L2_PIX_FMT_VYUY:
+		stride = ALIGN_UP(width * 2, 64);
+		break;
+	case V4L2_PIX_FMT_NV12:
+	case V4L2_PIX_FMT_NV21:
+		stride = ALIGN_UP(width, 64);
+		break;
+	default:
+		stride = ALIGN_UP(width * 2, 64);
+		break;
 	}
 
 	return stride;
@@ -300,14 +312,14 @@ static int get_frame_size(int width, int height, int format)
 {
 	int frame_size;
 
-	switch (format)	{
-		case V4L2_PIX_FMT_NV12:
-		case V4L2_PIX_FMT_NV21:
-			frame_size = get_stride_size(width,format) * height * 3 /2;
-			break;
-		default:
-			frame_size = get_stride_size(width,format) * height;
-			break;
+	switch (format) {
+	case V4L2_PIX_FMT_NV12:
+	case V4L2_PIX_FMT_NV21:
+		frame_size = get_stride_size(width, format) * height * 3 / 2;
+		break;
+	default:
+		frame_size = get_stride_size(width, format) * height;
+		break;
 	}
 
 	return frame_size;
@@ -317,7 +329,7 @@ int iov_from_buf(struct iovec *iov, uint32_t segment, void *pdata, int size)
 {
 	int i;
 	int length = size;
-	void* src = pdata;
+	void *src = pdata;
 
 	for (i = 0; i < segment; i++) {
 		int tmp = iov[i].iov_len < length ? iov[i].iov_len : length;
@@ -337,8 +349,7 @@ static int get_vq_index(struct virtio_camera *vcamera, struct virtio_vq_info *vq
 {
 	int i;
 
-	for (i = 0; i < VIRTIO_CAMERA_NUMQ; i++)
-	{
+	for (i = 0; i < VIRTIO_CAMERA_NUMQ; i++) {
 		if (vq == &vcamera->queues[i])
 			return i;
 	}
@@ -351,7 +362,7 @@ static void virtio_camera_notify(void *vdev, struct virtio_vq_info *vq)
 	struct virtio_camera *vcamera = vdev;
 	int index = get_vq_index(vcamera, vq);
 
-	pr_err("virtio_camera_notify get the vq index is %d\n", index);
+	// pr_err("virtio_camera_notify get the vq index is %d\n", index);
 
 	if ((index < 0) || (index > VIRTIO_CAMERA_NUMQ))
 		return;
@@ -359,10 +370,10 @@ static void virtio_camera_notify(void *vdev, struct virtio_vq_info *vq)
 	if (!vq_has_descs(vq))
 		return;
 
-	pr_info("vcamera thread index %d vq_has_descs\n", index);
+	// pr_info("vcamera thread index %d vq_has_descs\n", index);
 	pthread_mutex_lock(&vcamera->vq_related[index].req_mutex);
 	if (!vcamera->vq_related[index].in_process) {
-		pr_info("vcamera thread index %d wake up %p\n", index, &vcamera->vq_related[index].req_cond);
+		// pr_info("vcamera thread index %d wake up %p\n", index, &vcamera->vq_related[index].req_cond);
 		pthread_cond_signal(&vcamera->vq_related[index].req_cond);
 	}
 	pthread_mutex_unlock(&vcamera->vq_related[index].req_mutex);
@@ -441,7 +452,7 @@ virtio_camera_create_udmabuf(struct virtio_camera *vcamera, struct iovec *entrie
 
 static void virtio_camera_reset(void *vdev)
 {
-	//DODO, reset the camera device
+	// DODO, reset the camera device
 	pr_info("virtio_camera  reset camera...\n");
 }
 
@@ -470,15 +481,15 @@ static void virtio_camera_neg_features(void *vdev, uint64_t negotiated_features)
 static void virtio_camera_set_status(void *vdev, uint64_t status) { pr_info("virtio_camera  camera_set_status...\n"); }
 
 static struct virtio_ops virtio_camera_ops = {
-	"virtio_camera",					 /* our name */
-	VIRTIO_CAMERA_NUMQ,				  /* we support one virtqueue */
-	sizeof(struct virtio_camera_config), /* config reg size */
-	virtio_camera_reset,				 /* reset */
-	virtio_camera_notify,				/* device-wide qnotify */
-	virtio_camera_cfgread,			   /* read virtio config */
-	virtio_camera_cfgwrite,			  /* write virtio config */
-	virtio_camera_neg_features,		  /* apply negotiated features */
-	virtio_camera_set_status,			/* called on guest set status */
+    "virtio_camera",                     /* our name */
+    VIRTIO_CAMERA_NUMQ,                  /* we support one virtqueue */
+    sizeof(struct virtio_camera_config), /* config reg size */
+    virtio_camera_reset,                 /* reset */
+    virtio_camera_notify,                /* device-wide qnotify */
+    virtio_camera_cfgread,               /* read virtio config */
+    virtio_camera_cfgwrite,              /* write virtio config */
+    virtio_camera_neg_features,          /* apply negotiated features */
+    virtio_camera_set_status,            /* called on guest set status */
 };
 
 static void *virtio_dqbuf_thread(void *data)
@@ -508,19 +519,55 @@ static void *virtio_dqbuf_thread(void *data)
 			if (ret == 0 && buf->addr) {
 				// (fill req to virtqueue)
 				struct capture_buffer *p = STAILQ_FIRST(&camera_devs[camera_id].capture_list);
-				pr_info("vcamera %d DQ a buffer p->idx = %d pdata %p uuid %s\n", camera_id, p->idx,
-						buf->addr, p->uuid);
+				pr_info("vcamera %d DQ a buffer p->idx = %d pdata %p uuid %s\n",
+				        camera_id,
+				        p->idx,
+				        buf->addr,
+				        p->uuid);
 
-				vq_relchain(vq, p->idx, sizeof(struct virtio_camera_request));
+#ifdef SHARE_CAMERA
+				memcpy(p->remapped_addr,
+				       buf->addr,
+				       camera_devs[camera_id].streams[0].width *
+				           camera_devs[camera_id].streams[0].height * 2);
+				ret = virtio_camera_stream_qbuf(camera_id, &buf, 1, NULL);
+#endif
+#ifdef PRINT_TIMESTAMP
+				{
+					struct timespec ts;
+
+					clock_gettime(CLOCK_REALTIME,&ts);
+					// long long milliseconds = (ts.tv_sec * 1000LL + ts.tv_nsec / 1e6);
+
+					p->buffer.timestamp = ts.tv_sec * 1e6 + ts.tv_nsec;
+					pr_info("virtio camera test timestamp %lld\n",p->buffer.timestamp);
+				}
+#endif
+#ifdef DUMP_IMG
+				if (i == 100)
+				{
+					char camera_name[128];
+					sprintf(camera_name,"virtio_camera_id_%d.yuv",i);
+					FILE* fp = fopen(camera_name,"w");
+					fwrite(buf->addr,
+						1,
+						camera_devs[camera_id].streams[0].width *
+						camera_devs[camera_id].streams[0].height * 2,
+						fp);
+					fclose(fp);
+				}
+#endif
+				vq_relchain(vq,p->idx,sizeof(struct virtio_camera_request));
 				vq_endchains(vq, 0);
 
 				STAILQ_REMOVE(&camera_devs[camera_id].capture_list, p, capture_buffer, link);
 			}
 			pthread_mutex_unlock(&camera_devs[camera_id].capture_list_mutex);
 			pr_info("virtio_camera  virtio_camera_stream_dqbuf ret = %d buf->index %d %p\n",
-					ret,
-					buf->index,
-					buf->addr);
+			        ret,
+			        buf->index,
+			        buf->addr);
+
 			i++;
 		} else {
 			pthread_mutex_unlock(&camera_devs[camera_id].capture_list_mutex);
@@ -556,8 +603,12 @@ static int init_streams(int camera_id, int format, int width, int height)
 	return 0;
 };
 
-static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio_camera_request *response,
-	struct iovec *buf_describle_vec, struct virtio_camera *vcam, uint16_t idx, int camera_id)
+static int virtio_camera_handle(struct virtio_camera_request *req,
+                                struct virtio_camera_request *response,
+                                struct iovec *buf_describle_vec,
+                                struct virtio_camera *vcam,
+                                uint16_t idx,
+                                int camera_id)
 {
 	int ret;
 	int i;
@@ -568,24 +619,25 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 	int height;
 	int format;
 	uint8_t buffer_count = camera_devs[camera_id].buffer_count;
-	struct capture_buffer* p = NULL;
+	struct capture_buffer *p = NULL;
 	struct v4l2_fmtdesc format_desc = {};
-	struct dma_buf_info* pdma;
-	camera_buffer_t* buf;
+	struct dma_buf_info *pdma;
+	camera_buffer_t *buf;
 	char thread_name[128];
 
 	response->type = VIRTIO_CAMERA_RET_OK;
 
 	switch (req->type) {
 	case VIRTIO_CAMERA_OPEN:
+		break;
 	case VIRTIO_CAMERA_CLOSE:
 		break;
 
 	case VIRTIO_CAMERA_GET_FORMAT:
-		if(camera_devs[camera_id].stream_list.num_streams > 0) {
-			width = camera_devs[camera_id].stream_list.streams[0].width;
-			height = camera_devs[camera_id].stream_list.streams[0].height;
-			format = camera_devs[camera_id].stream_list.streams[0].format;
+		if (camera_devs[camera_id].stream_list.num_streams > 0) {
+			width = camera_devs[camera_id].streams[0].width;
+			height = camera_devs[camera_id].streams[0].height;
+			format = V4L2_PIX_FMT_UYVY;
 
 			response->u.format.camera_format.width = width;
 			response->u.format.camera_format.height = height;
@@ -599,6 +651,9 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		break;
 
 	case VIRTIO_CAMERA_SET_FORMAT:
+		width = req->u.format.camera_format.width;
+		height = req->u.format.camera_format.height;
+		format = V4L2_PIX_FMT_UYVY;
 		pr_info("##format.pixel_format_type is: %d \n", req->u.format.pixel_format_type);
 		pr_info("##format.camera_format.height is: %d \n", req->u.format.camera_format.height);
 		pr_info("##format.width is: %d \n", req->u.format.camera_format.width);
@@ -608,11 +663,15 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		response->u.format.pixel_format_type = req->u.format.pixel_format_type;
 		response->u.format.camera_format.height = req->u.format.camera_format.height;
 		response->u.format.camera_format.width = req->u.format.camera_format.width;
-		response->u.format.camera_format.sizeimage = req->u.format.camera_format.sizeimage;
-		response->u.format.camera_format.stride = req->u.format.camera_format.stride;
+		response->u.format.camera_format.sizeimage = get_frame_size(width, height, format);
+		//; // req->u.format.camera_format.sizeimage;
+		response->u.format.camera_format.stride = get_stride_size(width, format);
+		// req->u.format.camera_format.stride;
 
-		init_streams(camera_id, req->u.format.pixel_format_type, req->u.format.camera_format.width,
-					 req->u.format.camera_format.height);
+		init_streams(camera_id,
+		             req->u.format.pixel_format_type,
+		             req->u.format.camera_format.width,
+		             req->u.format.camera_format.height);
 		ret = virtio_camera_wrapper_config_streams(camera_id);
 		pr_info("virtio_camera virtio_camera_wrapper_config_streams ret = %d\n", ret);
 		if (ret != 0) {
@@ -629,9 +688,12 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		response->u.format.camera_format.sizeimage = req->u.format.camera_format.sizeimage;
 		response->u.format.camera_format.stride = req->u.format.camera_format.stride;
 
-		init_streams(camera_id, req->u.format.pixel_format_type, req->u.format.camera_format.width,
-					 req->u.format.camera_format.height);
-		ret = virtio_camera_wrapper_config_streams(camera_id);
+		init_streams(camera_id,
+		             req->u.format.pixel_format_type,
+		             req->u.format.camera_format.width,
+		             req->u.format.camera_format.height);
+		ret = 0;
+		// virtio_camera_wrapper_config_streams(camera_id);
 		pr_info("virtio_camera virtio_camera_wrapper_config_streams ret = %d\n", ret);
 		if (ret != 0) {
 			response->type = VIRTIO_CAMERA_RET_INVALID;
@@ -640,46 +702,62 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		break;
 
 	case VIRTIO_CAMERA_ENUM_FORMAT:
-		pr_info("virtio_camera VIRTIO_CAMERA_ENUM_FORMAT req->index %d\n", req->index);
+		// pr_info("virtio_camera VIRTIO_CAMERA_ENUM_FORMAT camera_id %d req->index %d\n",
+		// 	camera_id,req->index);
 		if (req->index == 0) {
-			 num_streams = virtio_camera_get_formats_number(camera_id);
-			 camera_devs[camera_id].supported_stream_list.num_streams = num_streams;
-			 camera_devs[camera_id].supported_stream_list.streams = malloc(sizeof(stream_t) * num_streams);
-			 virtio_camera_get_formats(camera_id,camera_devs[camera_id].supported_stream_list.streams,
-						   &num_streams);
+			num_streams = 1; // virtio_camera_get_formats_number(camera_id);
+			camera_devs[camera_id].supported_stream_list.num_streams = num_streams;
+			camera_devs[camera_id].supported_stream_list.streams = malloc(sizeof(stream_t) * num_streams);
+			// virtio_camera_get_formats(
+			//     camera_id, camera_devs[camera_id].supported_stream_list.streams, &num_streams);
+			camera_devs[camera_id].supported_stream_list.streams->width =
+			    camera_devs[camera_id].streams[0].width;
+			camera_devs[camera_id].supported_stream_list.streams->height =
+			    camera_devs[camera_id].streams[0].height;
+			camera_devs[camera_id].supported_stream_list.streams->format = V4L2_PIX_FMT_UYVY;
+			camera_devs[camera_id].supported_stream_list.operation_mode = 2;
+
 		} else if (req->index >= camera_devs[camera_id].supported_stream_list.num_streams) {
 			response->type = VIRTIO_CAMERA_RET_INVALID;
 			pr_info("virtio_camera VIRTIO_CAMERA_ENUM_FORMAT faild\n");
 			break;
 		}
 		format_desc.index = req->index;
-		format_desc.pixelformat = camera_devs[camera_id].supported_stream_list.streams[req->index].format;
+		format_desc.pixelformat = V4L2_PIX_FMT_UYVY;
+		// camera_devs[camera_id].supported_stream_list.streams[req->index].format;
 		format_desc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		response->u.format.pixel_format_type = format_desc.pixelformat;
 
 		break;
 	case VIRTIO_CAMERA_ENUM_SIZE:
-		pr_info("virtio_camera VIRTIO_CAMERA_ENUM_SIZE req->index %d\n", req->index);
-		if (req->index == 0) {
-			 num_streams = virtio_camera_get_formats_number(camera_id);
-			 camera_devs[camera_id].supported_stream_list.num_streams = num_streams;
-			 camera_devs[camera_id].supported_stream_list.streams = malloc(sizeof(stream_t) * num_streams);
-			 virtio_camera_get_formats(camera_id,camera_devs[camera_id].supported_stream_list.streams,
-						   &num_streams);
+		// pr_info("virtio_camera VIRTIO_CAMERA_ENUM_SIZE camera_id %d req->index %d\n",
+		// 	camera_id, req->index);
+		if (camera_devs[camera_id].supported_stream_list.streams == NULL) {
+			num_streams = 1; // virtio_camera_get_formats_number(camera_id);
+			camera_devs[camera_id].supported_stream_list.num_streams = num_streams;
+			camera_devs[camera_id].supported_stream_list.streams = malloc(sizeof(stream_t) * num_streams);
+			//  virtio_camera_get_formats(camera_id,camera_devs[camera_id].supported_stream_list.streams,
+			// 			   &num_streams);
+			camera_devs[camera_id].supported_stream_list.streams->width =
+			    camera_devs[camera_id].streams[0].width;
+			camera_devs[camera_id].supported_stream_list.streams->height =
+			    camera_devs[camera_id].streams[0].height;
+			camera_devs[camera_id].supported_stream_list.streams->format = V4L2_PIX_FMT_UYVY;
+			camera_devs[camera_id].supported_stream_list.operation_mode = 2;
 		} else if (req->index >= camera_devs[camera_id].supported_stream_list.num_streams) {
 			response->type = VIRTIO_CAMERA_RET_INVALID;
 			pr_info("virtio_camera VIRTIO_CAMERA_ENUM_FORMAT faild\n");
 			break;
 		}
 		response->u.format.camera_format.width =
-			camera_devs[camera_id].supported_stream_list.streams[req->index].width;
+		    camera_devs[camera_id].supported_stream_list.streams[req->index].width;
 		response->u.format.camera_format.height =
-			camera_devs[camera_id].supported_stream_list.streams[req->index].height;
+		    camera_devs[camera_id].supported_stream_list.streams[req->index].height;
 		break;
 
 	case VIRTIO_CAMERA_CREATE_BUFFER:
 
-		pr_info("virtio_camera It is create buffer, has %d segments\n",req->u.buffer.segment);
+		pr_info("virtio_camera It is create buffer, has %d segments\n", req->u.buffer.segment);
 		if (buffer_count >= MAX_BUFFER_COUNT) {
 			pr_err("virtio_camera there is no space, buffer_count %d\n", buffer_count);
 			response->type = VIRTIO_CAMERA_RET_OUT_OF_MEMORY;
@@ -688,22 +766,19 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 
 		camera_devs[camera_id].capture_buffers[buffer_count].segment = req->u.buffer.segment;
 
-		camera_devs[camera_id].capture_buffers[buffer_count].iov = malloc(
-			camera_devs[camera_id].capture_buffers[buffer_count].segment * sizeof(struct iovec));
+		camera_devs[camera_id].capture_buffers[buffer_count].iov =
+		    malloc(camera_devs[camera_id].capture_buffers[buffer_count].segment * sizeof(struct iovec));
 		memcpy(camera_devs[camera_id].capture_buffers[buffer_count].iov,
-			   buf_describle_vec->iov_base,
-			   camera_devs[camera_id].capture_buffers[buffer_count].segment *
-				   sizeof(struct iovec));
+		       buf_describle_vec->iov_base,
+		       camera_devs[camera_id].capture_buffers[buffer_count].segment * sizeof(struct iovec));
 		pr_info("virtio_cameraThe buffer describle iov base is %p, len is %ld\n.",
-				buf_describle_vec->iov_base,
-				buf_describle_vec->iov_len);
+		        buf_describle_vec->iov_base,
+		        buf_describle_vec->iov_len);
 
 		pdma = virtio_camera_create_udmabuf(
-			vcam,
-			camera_devs[camera_id].capture_buffers[buffer_count].iov,
-			req->u.buffer.segment);
+		    vcam, camera_devs[camera_id].capture_buffers[buffer_count].iov, req->u.buffer.segment);
 
-		if(NULL == pdma) {
+		if (NULL == pdma) {
 			pr_err("virtio_camera create udmabuf faild\n");
 			response->type = VIRTIO_CAMERA_RET_OUT_OF_MEMORY;
 			break;
@@ -715,42 +790,39 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		camera_devs[camera_id].capture_buffers[buffer_count].length = 0;
 		for (i = 0; i < req->u.buffer.segment; i++) {
 			camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_len =
-				(uint32_t)camera_devs[camera_id]
-					.capture_buffers[buffer_count]
-					.iov[i]
-					.iov_len; // Frontend provide this value is uint32_t, so need convert.
+			    (uint32_t)camera_devs[camera_id]
+			        .capture_buffers[buffer_count]
+			        .iov[i]
+			        .iov_len; // Frontend provide this value is uint32_t, so need convert.
 			pr_info("virtio_camera#The %dth segment of buffer, address is %p, len is %ld \n",
-					i,
-					camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_base,
-					camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_len);
+			        i,
+			        camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_base,
+			        camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_len);
 			// There is still GPA, need map to HVA
-			camera_devs[camera_id]
-				.capture_buffers[buffer_count]
-				.iov[i]
-				.iov_base = paddr_guest2host(
-				vcam->base.dev->vmctx,
-				(uintptr_t)camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_base,
-				camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_len);
+			camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_base = paddr_guest2host(
+			    vcam->base.dev->vmctx,
+			    (uintptr_t)camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_base,
+			    camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_len);
 			pr_info("The %dth hva is  %p  \n",
-					i,
-					camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_base);
+			        i,
+			        camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_base);
 			camera_devs[camera_id].capture_buffers[buffer_count].length +=
-				camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_len;
+			    camera_devs[camera_id].capture_buffers[buffer_count].iov[i].iov_len;
 		}
 
-		sprintf(camera_devs[camera_id].capture_buffers[buffer_count].uuid,
-				"buffer_id%d",
-				buffer_count);
-		memcpy(response->u.buffer.uuid,
-			   camera_devs[camera_id].capture_buffers[buffer_count].uuid,
-			   16);
+		sprintf(camera_devs[camera_id].capture_buffers[buffer_count].uuid, "buffer_id%d", buffer_count);
+		memcpy(response->u.buffer.uuid, camera_devs[camera_id].capture_buffers[buffer_count].uuid, 16);
 		pr_info("virtio_camera response->u.buffer.uuid %s\n", response->u.buffer.uuid);
 		ret = map_buffer(camera_id, buffer_count);
 		if (ret != 0) {
 			pr_err("virtio_camera create buffer faild! \n");
 			response->type = VIRTIO_CAMERA_RET_OUT_OF_MEMORY;
 		}
-
+		{
+			camera_buffer_t tmp;
+			tmp.index = camera_devs[camera_id].buffer_count;
+			g_hal_ops.allocate_memory(camera_id, &tmp);
+		}
 		camera_devs[camera_id].buffer_count++;
 
 		break;
@@ -760,8 +832,8 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 
 		for (buffer_index = 0; buffer_index < buffer_count; buffer_index++) {
 			if (!memcmp(camera_devs[camera_id].capture_buffers[buffer_index].uuid,
-						req->u.buffer.uuid,
-						sizeof(camera_devs[camera_id].capture_buffers[buffer_index].uuid))) {
+			            req->u.buffer.uuid,
+			            sizeof(camera_devs[camera_id].capture_buffers[buffer_index].uuid))) {
 				break;
 			} else if (buffer_index == (buffer_count - 1)) {
 				pr_info("virtio_camera can't find the buffer %s\n", req->u.buffer.uuid);
@@ -775,11 +847,13 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 				camera_devs[camera_id].capture_buffers[buffer_index].iov = NULL;
 			}
 			for (i = buffer_index; i < buffer_count; i++)
-				camera_devs[camera_id].capture_buffers[i] = camera_devs[camera_id].capture_buffers[i+1];
+				camera_devs[camera_id].capture_buffers[i] =
+				    camera_devs[camera_id].capture_buffers[i + 1];
 
 			if (buffer_count > 0)
-				memset(&camera_devs[camera_id].capture_buffers[buffer_count - 1], 0,
-					sizeof(struct capture_buffer));
+				memset(&camera_devs[camera_id].capture_buffers[buffer_count - 1],
+				       0,
+				       sizeof(struct capture_buffer));
 			camera_devs[camera_id].buffer_count--;
 		}
 
@@ -790,23 +864,23 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 
 		for (buffer_index = 0; buffer_index < buffer_count; buffer_index++) {
 			if (!memcmp(camera_devs[camera_id].capture_buffers[buffer_index].uuid,
-						req->u.buffer.uuid,
-						sizeof(camera_devs[camera_id].capture_buffers[buffer_index].uuid))) {
+			            req->u.buffer.uuid,
+			            sizeof(camera_devs[camera_id].capture_buffers[buffer_index].uuid))) {
 				camera_devs[camera_id].capture_buffers[buffer_index].idx = idx;
 				camera_devs[camera_id].capture_buffers[buffer_index].response = response;
 				pthread_mutex_lock(&camera_devs[camera_id].capture_list_mutex);
 				pr_info("virtio_camera STAILQ_EMPTY ? %s\n",
-					(STAILQ_EMPTY(&camera_devs[camera_id].capture_list) ? "NULL" : "NOT NULL"));
+				        (STAILQ_EMPTY(&camera_devs[camera_id].capture_list) ? "NULL" : "NOT NULL"));
 				if (STAILQ_EMPTY(&camera_devs[camera_id].capture_list)) {
 					pr_info("virtio_camera STAILQ_INSERT_HEAD buffer %s\n", req->u.buffer.uuid);
 					STAILQ_INSERT_HEAD(&camera_devs[camera_id].capture_list,
-								&camera_devs[camera_id].capture_buffers[buffer_index],
-								link);
+					                   &camera_devs[camera_id].capture_buffers[buffer_index],
+					                   link);
 				} else {
 					pr_info("virtio_camera STAILQ_INSERT_TAIL buffer %s\n", req->u.buffer.uuid);
 					STAILQ_INSERT_TAIL(&camera_devs[camera_id].capture_list,
-								&camera_devs[camera_id].capture_buffers[buffer_index],
-								link);
+					                   &camera_devs[camera_id].capture_buffers[buffer_index],
+					                   link);
 				}
 				pthread_mutex_unlock(&camera_devs[camera_id].capture_list_mutex);
 				break;
@@ -816,16 +890,16 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		}
 
 		pr_info("virtio_camera camera_id %d req uuid %s, native addr %p uuid %s\n",
-				camera_id,
-				req->u.buffer.uuid,
-				camera_devs[camera_id].capture_buffers[buffer_index].remapped_addr,
-				camera_devs[camera_id].capture_buffers[buffer_index].uuid);
+		        camera_id,
+		        req->u.buffer.uuid,
+		        camera_devs[camera_id].capture_buffers[buffer_index].remapped_addr,
+		        camera_devs[camera_id].capture_buffers[buffer_index].uuid);
 
 		for (j = 0; j < buffer_count; j++) {
 			pr_info("virtio_camera camera_id %d native addr %p uuid %s\n",
-					camera_id,
-					camera_devs[camera_id].capture_buffers[j].remapped_addr,
-					camera_devs[camera_id].capture_buffers[j].uuid);
+			        camera_id,
+			        camera_devs[camera_id].capture_buffers[j].remapped_addr,
+			        camera_devs[camera_id].capture_buffers[j].uuid);
 		}
 
 		buf = &camera_devs[camera_id].capture_buffers[buffer_index].buffer;
@@ -835,7 +909,7 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 		buf->s = camera_devs[camera_id].streams[0];
 
 		pr_info("virtio_camera camera_devs[camera_id].stream_state = %d\n",
-			camera_devs[camera_id].stream_state);
+		        camera_devs[camera_id].stream_state);
 
 		if (camera_devs[camera_id].stream_state == 0) {
 			virtio_camera_req_bufs(camera_id);
@@ -843,24 +917,27 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 			camera_devs[camera_id].stream_state = 1;
 		}
 
-		ret = virtio_camera_stream_qbuf(camera_id, &buf, 1, &buffer_index);
-		pr_info("virtio_camera camera %d virtio_camera_stream_qbuf capture_buffers[%d].uuid %s ret = "
-				"%d\n",
-				camera_id,
-				buffer_index,
-				camera_devs[camera_id].capture_buffers[buffer_index].uuid,
-				ret);
+		if (camera_devs[camera_id].buffer_list == 0) {
+
+			buf->index = buffer_index;
+			ret = virtio_camera_stream_qbuf(camera_id, &buf, 1, NULL);
+			pr_info("virtio_camera camera %d virtio_camera_stream_qbuf capture_buffers[%d].uuid %s ret = "
+			        "%d\n",
+			        camera_id,
+			        buffer_index,
+			        camera_devs[camera_id].capture_buffers[buffer_index].uuid,
+			        ret);
+		}
+
 		break;
 
 	case VIRTIO_CAMERA_STREAM_ON:
+		camera_devs[camera_id].buffer_list = 1;
+
 		pr_info("virtio_camera Stream on buffer_count = %d\n", buffer_count);
 
-		virtio_camera_start_stream(camera_id);
-		camera_devs[camera_id].stream_state = 1;
-
-
-		int ret = pthread_create(&camera_devs[camera_id].vtid,NULL, virtio_dqbuf_thread,
-								 &g_camera_thread_param[camera_id]);
+		int ret = pthread_create(
+		    &camera_devs[camera_id].vtid, NULL, virtio_dqbuf_thread, &g_camera_thread_param[camera_id]);
 		if (ret) {
 			pr_err("Failed to create the virtio_dqbuf_thread.\n");
 		} else {
@@ -868,11 +945,14 @@ static int virtio_camera_handle(struct virtio_camera_request *req, struct virtio
 			pthread_setname_np(camera_devs[camera_id].vtid, thread_name);
 		}
 
+		virtio_camera_start_stream(camera_id);
+		camera_devs[camera_id].stream_state = 1;
 		break;
 
 	case VIRTIO_CAMERA_STREAM_OFF:
 		pr_info("virtio_camera Stream off\n");
 		camera_devs[camera_id].stream_state = 0;
+		camera_devs[camera_id].buffer_list = 0;
 		// clear all request
 		pthread_mutex_lock(&camera_devs[camera_id].capture_list_mutex);
 
@@ -919,12 +999,12 @@ static void *virtio_camera_thread(void *data)
 
 		vcamera->vq_related[camera_id].in_process = 0;
 		while (!vq_has_descs(vq) && !vcamera->closing) {
-			pr_info("vcamera thread camera_id %d wait event %p\n",camera_id,
-				&vcamera->vq_related[camera_id].req_cond);
+			// pr_info("vcamera thread camera_id %d wait event %p\n",camera_id,
+			// 	&vcamera->vq_related[camera_id].req_cond);
 			pthread_cond_wait(&vcamera->vq_related[camera_id].req_cond,
-				&vcamera->vq_related[camera_id].req_mutex);
+			                  &vcamera->vq_related[camera_id].req_mutex);
 		}
-		pr_info("vcamera thread camera_id %d get event\n", camera_id);
+		// pr_info("vcamera thread camera_id %d get event\n", camera_id);
 
 		if (vcamera->closing) {
 			pthread_mutex_unlock(&vcamera->vq_related[camera_id].req_mutex);
@@ -935,7 +1015,7 @@ static void *virtio_camera_thread(void *data)
 		do {
 			n = vq_getchain(vq, &idx, iov, VIRTIO_CAMERA_MAXSEGS, flags);
 
-			pr_notice("vcamera thread camera_id %d get vq_getchain\n", camera_id);
+			// pr_notice("vcamera thread camera_id %d get vq_getchain\n", camera_id);
 
 			if (n < 0 || n > VIRTIO_CAMERA_MAXSEGS) {
 				pr_err("virtio-camera: invalid descriptors\n");
@@ -950,7 +1030,7 @@ static void *virtio_camera_thread(void *data)
 			memcpy(&req, iov[0].iov_base, sizeof(struct virtio_camera_request));
 			response = (struct virtio_camera_request *)iov[n - 1].iov_base;
 
-			pr_notice("virtio_camera the req type is %d vq size is %d\n", req.type, vq->qsize);
+			// pr_notice("virtio_camera the req type is %d vq size is %d\n", req.type, vq->qsize);
 			virtio_camera_handle(&req, response, &iov[1], vcamera, idx, camera_id);
 
 			if (req.type != VIRTIO_CAMERA_QBUF)
@@ -1003,17 +1083,17 @@ static int map_buffer(int camera_id, int buffer_index)
 
 	buf->s = camera_devs[camera_id].streams[0];
 	buf->addr = mmap(NULL,
-					 camera_devs[camera_id].capture_buffers[buffer_index].length,
-					 PROT_READ | PROT_WRITE,
-					 MAP_SHARED | MAP_POPULATE,
-					 camera_devs[camera_id].capture_buffers[buffer_index].dmabuf_fd,
-					 0);
+	                 camera_devs[camera_id].capture_buffers[buffer_index].length,
+	                 PROT_READ | PROT_WRITE,
+	                 MAP_SHARED | MAP_POPULATE,
+	                 camera_devs[camera_id].capture_buffers[buffer_index].dmabuf_fd,
+	                 0);
 	memset(buf->addr, 0, camera_devs[camera_id].capture_buffers[buffer_index].length);
 	camera_devs[camera_id].capture_buffers[buffer_index].remapped_addr = buf->addr;
 	pr_info("The capture_buffers[%d].length = %d memset addr %p no memset\n",
-			buffer_index,
-			camera_devs[camera_id].capture_buffers[buffer_index].length,
-			buf->addr);
+	        buffer_index,
+	        camera_devs[camera_id].capture_buffers[buffer_index].length,
+	        buf->addr);
 	ret = (buf->addr != NULL) ? 0 : -1;
 	return ret;
 }
@@ -1042,6 +1122,8 @@ static int virtio_camera_init(struct vmctx *ctx, struct pci_vdev *dev, char *opt
 	int i;
 	char *opt;
 	int32_t ret = -1;
+
+	pr_err("vcamera init: vmctx info, vm vmid is %d, vm name is %s\n", ctx->vmid, ctx->name);
 
 	vcamera = calloc(1, sizeof(struct virtio_camera));
 
@@ -1089,8 +1171,8 @@ static int virtio_camera_init(struct vmctx *ctx, struct pci_vdev *dev, char *opt
 		g_camera_thread_param[i].camera_id = i;
 		g_camera_thread_param[i].vcamera = vcamera;
 
-		ret = pthread_create(&vcamera->vcamera_tid[i],NULL,virtio_camera_thread,
-			(void*)(&g_camera_thread_param[i]));
+		ret = pthread_create(
+		    &vcamera->vcamera_tid[i], NULL, virtio_camera_thread, (void *)(&g_camera_thread_param[i]));
 		if (ret) {
 			pr_err("Failed to create the virtio_camera_thread.\n");
 			return 0;
@@ -1107,6 +1189,7 @@ static int virtio_camera_init(struct vmctx *ctx, struct pci_vdev *dev, char *opt
 	}
 
 	memcpy(vcamera->config.name, "hello_camera\0", 14);
+	vcamera->config.number_of_virtual_camera = VIRTIO_CAMERA_NUMQ;
 
 	/* initialize config space */
 	pci_set_cfgdata16(dev, PCIR_DEVICE, 0x1040 + VIRTIO_TYPE_CAMERA);
@@ -1139,7 +1222,7 @@ Error:
 
 static void virtio_camera_req_stop(struct virtio_camera *vcamera, int index)
 {
-	void* jval;
+	void *jval;
 
 	pthread_mutex_lock(&vcamera->vq_related[index].req_mutex);
 	pthread_cond_broadcast(&vcamera->vq_related[index].req_cond);
@@ -1147,7 +1230,7 @@ static void virtio_camera_req_stop(struct virtio_camera *vcamera, int index)
 	pthread_join(vcamera->vcamera_tid[index], &jval);
 }
 
-static void virtio_camera_deinit(struct vmctx* ctx,struct pci_vdev* dev,char* opts)
+static void virtio_camera_deinit(struct vmctx *ctx, struct pci_vdev *dev, char *opts)
 {
 	struct virtio_camera *vcamera;
 	int index;
@@ -1155,7 +1238,7 @@ static void virtio_camera_deinit(struct vmctx* ctx,struct pci_vdev* dev,char* op
 	if (dev->arg) {
 		pr_err("virtio_camera_deinit\n");
 		vcamera = (struct virtio_camera *)dev->arg;
-			  vcamera->closing = 1;
+		vcamera->closing = 1;
 
 		for (index = 0; index < VIRTIO_CAMERA_NUMQ; index++) {
 			if (NULL != camera_devs[index].supported_stream_list.streams) {
@@ -1174,11 +1257,9 @@ static void virtio_camera_deinit(struct vmctx* ctx,struct pci_vdev* dev,char* op
 	close_hal_handle();
 }
 
-struct pci_vdev_ops pci_ops_virtio_camera = {
-	.class_name = "virtio-camera",
-	.vdev_init = virtio_camera_init,
-	.vdev_deinit = virtio_camera_deinit,
-	.vdev_barwrite = virtio_pci_write,
-	.vdev_barread = virtio_pci_read
-};
+struct pci_vdev_ops pci_ops_virtio_camera = {.class_name = "virtio-camera",
+                                             .vdev_init = virtio_camera_init,
+                                             .vdev_deinit = virtio_camera_deinit,
+                                             .vdev_barwrite = virtio_pci_write,
+                                             .vdev_barread = virtio_pci_read};
 DEFINE_PCI_DEVTYPE(pci_ops_virtio_camera);
