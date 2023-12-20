@@ -700,9 +700,9 @@ virtio_sound_xfer(struct virtio_sound_pcm *stream)
 			* memcpy can only be used when SNDRV_PCM_INFO_INTERLEAVED.
 			*/
 			if (stream->dir == SND_PCM_STREAM_PLAYBACK) {
-				memcpy(buf, msg_node->iov[i].iov_base, to_copy * frame_size);
+				memcpy(buf, msg_node->iov[i].iov_base + msg_node->start_pos, to_copy * frame_size);
 			} else {
-				memcpy(msg_node->iov[i].iov_base, buf, to_copy * frame_size);
+				memcpy(msg_node->iov[i].iov_base + msg_node->start_pos, buf, to_copy * frame_size);
 			}
 
 			xfer += to_copy;
